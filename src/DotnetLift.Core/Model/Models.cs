@@ -1,0 +1,92 @@
+namespace DotnetLift.Core.Model;
+
+public enum ProjectKind
+{
+    Unknown,
+    ClassLibrary,
+    Console,
+    AspNetMvc,
+    AspNetWebApi,
+    AspNetMvcAndWebApi,
+    AspNetWebForms,
+}
+
+public enum Severity
+{
+    Info,
+    Warning,
+    Blocker,
+}
+
+/// <summary>A NuGet package entry from packages.config or a PackageReference.</summary>
+public sealed record PackageRef(string Id, string Version);
+
+/// <summary>A single thing the upgrade has to deal with.</summary>
+public sealed record Finding(
+    string Project,
+    Severity Severity,
+    string Category,
+    string Message,
+    string? Suggestion = null,
+    string? File = null,
+    int? Line = null);
+
+public sealed class ProjectInfo
+{
+    public required string Name { get; init; }
+    public required string FullPath { get; init; }
+    public string Directory => Path.GetDirectoryName(FullPath)!;
+
+    public bool IsSdkStyle { get; init; }
+    public string? TargetFramework { get; init; }
+    public string? OutputType { get; init; }
+    public ProjectKind Kind { get; set; }
+
+    public List<string> ProjectReferences { get; } = [];
+    public List<string> AssemblyReferences { get; } = [];
+    public List<PackageRef> Packages { get; } = [];
+
+    public bool HasPackagesConfig { get; init; }
+    public string? WebConfigPath { get; init; }
+    public string? AppConfigPath { get; init; }
+    public bool HasGlobalAsax { get; init; }
+
+    public List<string> SourceFiles { get; } = [];
+    public List<string> ViewFiles { get; } = [];
+
+    public bool IsWeb => Kind is ProjectKind.AspNetMvc or ProjectKind.AspNetWebApi
+        or ProjectKind.AspNetMvcAndWebApi or ProjectKind.AspNetWebForms;
+
+    public bool References(string assemblyName) =>
+        AssemblyReferences.Any(r => r.Equals(assemblyName, StringComparison.OrdinalIgnoreCase));
+
+    public bool HasPackage(string id) =>
+        Packages.Any(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    public override string ToString() => Name;
+}
+
+public sealed class SolutionInfo
+{
+    public required string Path { get; init; }
+    public List<ProjectInfo> Projects { get; } = [];
+
+    public ProjectInfo? FindByPath(string fullPath) =>
+        Projects.FirstOrDefault(p => string.Equals(
+            System.IO.Path.GetFullPath(p.FullPath),
+            System.IO.Path.GetFullPath(fullPath),
+            StringComparison.OrdinalIgnoreCase));
+}
+
+public sealed class AnalysisResult
+{
+    public required SolutionInfo Solution { get; init; }
+    public required string TargetFramework { get; init; }
+    public List<Finding> Findings { get; } = [];
+
+    public IEnumerable<Finding> For(ProjectInfo project) =>
+        Findings.Where(f => f.Project == project.Name);
+
+    public int Count(ProjectInfo project, Severity severity) =>
+        For(project).Count(f => f.Severity == severity);
+}
