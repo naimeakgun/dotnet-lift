@@ -1,5 +1,7 @@
 # dotnet-lift
 
+[![CI](https://github.com/naimeakgun/dotnet-lift/actions/workflows/ci.yml/badge.svg)](https://github.com/naimeakgun/dotnet-lift/actions/workflows/ci.yml)
+
 **Upgrade .NET Framework 4.x solutions to modern .NET, one reviewable step at a time.**
 
 `dotnet-lift` reads an ASP.NET MVC / Web API solution and the class libraries it uses, tells you exactly what stands between it and .NET 10, and builds an ordered upgrade plan. It asks questions as it goes, and the upgrade (coming next) runs step by step: approve each change, or let it run unattended.
@@ -18,30 +20,45 @@ $ dotnet-lift analyze samples/LegacyShop
 Which .NET version do you want to move to?
   1) .NET 10 (LTS, supported until Nov 2028) - recommended
   2) .NET 11 (STS, supported until Nov 2028)
-Choose [1-2] (default 1):
+Choose [1-2] (default 1): 1
 
 Projects (upgrade order):
-  1. LegacyShop.Core     Class library           v4.8   1 blocker(s), 3 warning(s)
-  2. LegacyShop.Data     Class library           v4.8   1 blocker(s), 6 warning(s)
-  3. LegacyShop.Web      ASP.NET MVC + Web API   v4.8   4 blocker(s), 25 warning(s)
+  1. LegacyShop.Core              Class library            v4.8     2 blocker(s), 5 warning(s)
+  2. LegacyShop.Data              Class library            v4.8     1 blocker(s), 9 warning(s)
+  3. LegacyShop.Web               ASP.NET MVC + Web API    v4.8     3 blocker(s), 27 warning(s)
 
 Plan:
    1. [auto ] [Low   ] LegacyShop.Core: Convert to SDK-style project
    2. [auto ] [Low   ] LegacyShop.Core: Migrate packages.config to PackageReference
    3. [agent] [High  ] LegacyShop.Core: Replace APIs removed from modern .NET
-   ...
+   4. [agent] [Medium] LegacyShop.Core: Decouple from ConfigurationManager
+   5. [auto ] [Medium] LegacyShop.Core: Retarget to net48;net10.0
+   6. [auto ] [Low   ] LegacyShop.Core: Build and run tests
+   7. [auto ] [Low   ] LegacyShop.Data: Convert to SDK-style project
+   8. [auto ] [Low   ] LegacyShop.Data: Migrate packages.config to PackageReference
    9. [agent] [High  ] LegacyShop.Data: Remove the System.Web dependency
-   ...
+  10. [agent] [Medium] LegacyShop.Data: Keep EF 6 running on modern .NET
+  11. [auto ] [Medium] LegacyShop.Data: Retarget to net48;net10.0
+  12. [auto ] [Low   ] LegacyShop.Data: Build and run tests
+  13. [auto ] [High  ] LegacyShop.Web: Convert to an ASP.NET Core project (net10.0)
+  14. [agent] [Medium] LegacyShop.Web: Move Global.asax and App_Start into Program.cs
+  15. [auto ] [Low   ] LegacyShop.Web: Move Web.config settings to appsettings.json
+  16. [agent] [High  ] LegacyShop.Web: Rebuild the request pipeline
+  17. [agent] [High  ] LegacyShop.Web: Port controllers
+  18. [agent] [High  ] LegacyShop.Web: Port Razor views
+  19. [auto ] [Low   ] LegacyShop.Web: Move static files to wwwroot
+  20. [human] [Low   ] LegacyShop.Web: Build, run and smoke test
 
 Blockers:
-  - LegacyShop.Core (Services/SnapshotSerializer.cs:13): BinaryFormatter is removed from modern .NET ...
-  - LegacyShop.Data: Class library references System.Web ...
+  - LegacyShop.Core (Services/SnapshotSerializer.cs:13): BinaryFormatter is removed from modern .NET (it always throws since .NET 9).
+  - LegacyShop.Core (Services/SnapshotSerializer.cs:22): BinaryFormatter is removed from modern .NET (it always throws since .NET 9).
+  - LegacyShop.Data: Class library references System.Web. It cannot move to modern .NET until this coupling is removed.
+  - LegacyShop.Web: Microsoft.AspNet.Web.Optimization 1.1.3: System.Web.Optimization bundling.
+  - LegacyShop.Web (Controllers/HomeController.cs:18): [ChildActionOnly] child actions do not exist in ASP.NET Core.
   - LegacyShop.Web (Views/Shared/_Layout.cshtml:11): Html.Action / Html.RenderAction (child action call).
 
 Write the full report to lift-report.md? [Y/n]:
 ```
-
-*(Counts above are illustrative; run it on the sample to see the real output.)*
 
 The Markdown report lists every finding with file, line and a suggested fix, grouped under the step that resolves it.
 

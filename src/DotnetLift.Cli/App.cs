@@ -113,7 +113,11 @@ public sealed class App(TextReader input, TextWriter output, bool interactive)
             _out.WriteLine($"  {s.Number,2}. [{mode}] [{s.Risk,-6}] {s.Project}: {s.Title}");
         }
 
-        var blockers = analysis.Findings.Where(f => f.Severity == Severity.Blocker).ToList();
+        var order = plan.Order.Select(p => p.Name).ToList();
+        var blockers = analysis.Findings
+            .Where(f => f.Severity == Severity.Blocker)
+            .OrderBy(f => order.IndexOf(f.Project))
+            .ToList();
         if (blockers.Count > 0)
         {
             _out.WriteLine();
