@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore DotnetLift.slnx
+
+      - name: Build
+        run: dotnet build DotnetLift.slnx --no-restore -c Release
+
+      - name: Test
+        run: dotnet test DotnetLift.slnx --no-build -c Release --logger "console;verbosity=normal"
+
+      - name: Analyze the sample solution
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet run --project src/DotnetLift.Cli -c Release --no-build -- analyze samples/LegacyShop --yes -o lift-report.md
+
+      - name: Upload sample report
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sample-report
+          path: lift-report.md

@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+TestResults/
+artifacts/
+*.nupkg
+
+# Reports generated while trying the tool on the samples
+samples/**/lift-report.md
