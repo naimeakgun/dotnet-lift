@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DotnetLift.Cli/DotnetLift.Cli.csproj" />
+    <Project Path="src/DotnetLift.Core/DotnetLift.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DotnetLift.Tests/DotnetLift.Tests.csproj" />
+  </Folder>
+</Solution>

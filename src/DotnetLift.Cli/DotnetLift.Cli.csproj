@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DotnetLift.Cli</RootNamespace>
+    <AssemblyName>dotnet-lift</AssemblyName>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dotnet-lift</ToolCommandName>
+    <PackageId>dotnet-lift</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Analyze a .NET Framework (ASP.NET MVC / Web API + class libraries) solution and upgrade it to modern .NET step by step.</Description>
+    <PackageTags>dotnet;upgrade;migration;aspnet;aspnetcore;netframework;modernization</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/naimeakgun/dotnet-lift</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetLift.Core\DotnetLift.Core.csproj" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
