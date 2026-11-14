@@ -35,18 +35,18 @@ public static class UpgradePlanner
 
     private static void AddLibrarySteps(StepBuilder b, ProjectInfo p, string target, bool consumedByFrameworkApp)
     {
-        if (!p.IsSdkStyle)
-        {
-            b.Add("sdk-style", "Convert to SDK-style project",
-                "Rewrite the .csproj in the SDK format: drop <Compile> lists, HintPaths, AssemblyInfo duplicates and MSBuild imports. The project still targets .NET Framework after this step, so nothing else changes yet.",
-                StepMode.Automatic, Risk.Low, f => f.Category == "Project file");
-        }
-
         if (p.HasPackagesConfig)
         {
             b.Add("package-reference", "Migrate packages.config to PackageReference",
-                "Move direct dependencies into <PackageReference> items and delete packages.config. Transitive packages are not carried over.",
+                "Move every package from packages.config into <PackageReference> items, remove the HintPath references and NuGet build imports, and delete packages.config. Packages that were only transitive dependencies can be pruned later.",
                 StepMode.Automatic, Risk.Low, f => f.Category == "Packages" || f.Category == "Package");
+        }
+
+        if (!p.IsSdkStyle)
+        {
+            b.Add("sdk-style", "Convert to SDK-style project",
+                "Rewrite the .csproj in the SDK format: <Compile> lists, HintPaths and MSBuild imports go away, files the old project did not compile are excluded explicitly. The project still targets .NET Framework after this step, so the code does not change yet.",
+                StepMode.Automatic, Risk.Low, f => f.Category == "Project file");
         }
 
         if (p.References("System.Web"))
