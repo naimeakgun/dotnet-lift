@@ -1,0 +1,67 @@
+name: demo
+
+# Regenerates the demo/upgraded-sample branch: the sample before the upgrade, then one commit per step the tool applies.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: demo-branch
+  cancel-in-progress: true
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build dotnet-lift
+        run: dotnet build src/DotnetLift.Cli -c Release
+
+      - name: Upgrade the sample, one commit per step
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIFT="dotnet run --project $GITHUB_WORKSPACE/src/DotnetLift.Cli -c Release --no-build --"
+          WORK="$RUNNER_TEMP/demo"
+          cp -r samples/LegacyShop "$WORK"
+          cp docs/demo-branch-README.md "$WORK/README.md"
+          printf 'bin/\nobj/\n' > "$WORK/.gitignore"
+          cd "$WORK"
+
+          git init -q -b demo/upgraded-sample
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "LegacyShop before the upgrade (.NET Framework 4.8)"
+
+          $LIFT upgrade . --yes --target net10.0
+
+          $LIFT analyze . --yes --target net10.0 -o lift-report.md
+          git add lift-report.md
+          git commit -qm "What is left to do (dotnet-lift analyze)"
+
+          git log --oneline
+
+      - name: Build the upgraded libraries
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/demo"
+          dotnet build LegacyShop.Core/LegacyShop.Core.csproj
+          dotnet build LegacyShop.Data/LegacyShop.Data.csproj
+
+      - name: Push demo/upgraded-sample
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$RUNNER_TEMP/demo"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" demo/upgraded-sample
