@@ -8,6 +8,8 @@ public sealed class Options
     public string? Output { get; private set; }
     public bool Yes { get; private set; }
     public bool NoReport { get; private set; }
+    public bool DryRun { get; private set; }
+    public bool AllowDirty { get; private set; }
 
     public static readonly string[] SupportedTargets = ["net10.0", "net11.0"];
 
@@ -39,6 +41,12 @@ public sealed class Options
                     break;
                 case "--no-report":
                     o.NoReport = true;
+                    break;
+                case "--dry-run":
+                    o.DryRun = true;
+                    break;
+                case "--allow-dirty":
+                    o.AllowDirty = true;
                     break;
                 default:
                     if (a.StartsWith('-'))

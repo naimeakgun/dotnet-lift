@@ -32,6 +32,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive)
             return options.Command switch
             {
                 "analyze" => await AnalyzeAsync(options),
+                "upgrade" => Upgrade(options),
                 "version" => PrintVersion(),
                 "help" => PrintHelp(),
                 _ => Unknown(options.Command),
@@ -49,14 +50,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive)
         _out.WriteLine("dotnet-lift · analyze");
         _out.WriteLine();
 
-        var target = options.Target ?? (options.Yes
-            ? SolutionAnalyzer.DefaultTarget
-            : _prompt.Choose("Which .NET version do you want to move to?",
-                [
-                    ("net10.0", ".NET 10 (LTS, supported until Nov 2028) - recommended"),
-                    ("net11.0", ".NET 11 (STS, supported until Nov 2028)"),
-                ]));
-
+        var target = AskTarget(options);
         var analysis = new SolutionAnalyzer().Analyze(options.Path, target);
         if (analysis.Solution.Projects.Count == 0)
         {
@@ -81,9 +75,37 @@ public sealed class App(TextReader input, TextWriter output, bool interactive)
         }
 
         _out.WriteLine();
-        _out.WriteLine("Next: `dotnet-lift upgrade` will walk through these steps one by one (coming in v0.2).");
+        _out.WriteLine("Next: `dotnet-lift upgrade` walks through these steps one by one.");
         return 0;
     }
+
+    private int Upgrade(Options options)
+    {
+        _out.WriteLine("dotnet-lift · upgrade");
+        _out.WriteLine();
+
+        var target = AskTarget(options);
+        var analysis = new SolutionAnalyzer().Analyze(options.Path, target);
+        if (analysis.Solution.Projects.Count == 0)
+        {
+            _out.WriteLine("No C# projects found.");
+            return 1;
+        }
+
+        _out.WriteLine($"Target: {target}");
+        var plan = UpgradePlanner.Create(analysis);
+        var settings = new UpgradeRunner.Settings(options.Yes, options.DryRun, options.AllowDirty);
+        return new UpgradeRunner(_prompt, _out).Run(analysis, plan, settings);
+    }
+
+    private string AskTarget(Options options) =>
+        options.Target ?? (options.Yes
+            ? SolutionAnalyzer.DefaultTarget
+            : _prompt.Choose("Which .NET version do you want to move to?",
+                [
+                    ("net10.0", ".NET 10 (LTS, supported until Nov 2028) - recommended"),
+                    ("net11.0", ".NET 11 (STS, supported until Nov 2028)"),
+                ]));
 
     private void PrintSummary(AnalysisResult analysis, UpgradePlan plan)
     {
@@ -155,7 +177,8 @@ public sealed class App(TextReader input, TextWriter output, bool interactive)
             dotnet-lift - upgrade .NET Framework solutions to modern .NET, step by step
 
             Usage:
-              dotnet-lift analyze [path] [options]
+              dotnet-lift analyze [path] [options]   Report what has to change and build the plan
+              dotnet-lift upgrade [path] [options]   Walk through the plan and apply the steps
 
             Arguments:
               path                 A .sln, a .csproj or a folder (default: current folder)
@@ -164,7 +187,9 @@ public sealed class App(TextReader input, TextWriter output, bool interactive)
               -t, --target <tfm>   net10.0 (default) or net11.0. Asked interactively if omitted.
               -o, --output <file>  Where to write the Markdown report (default: lift-report.md next to the solution)
                   --no-report      Print the summary only
-              -y, --yes            Do not ask questions; use defaults
+              -y, --yes            Do not ask questions; use defaults (upgrade: apply every automatic step)
+                  --dry-run        upgrade: show what would change, write nothing
+                  --allow-dirty    upgrade: run even if the git working tree has uncommitted changes
               -h, --help           Show this help
                   --version        Show the version
             """);

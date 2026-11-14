@@ -37,6 +37,43 @@ public sealed class Prompt(TextReader input, TextWriter output, bool interactive
         }
     }
 
+    /// <summary>
+    /// One-letter menu, e.g. "[Y]es / [n]o / [q]uit". Each choice is its key plus the rest of the word.
+    /// </summary>
+    public char Ask(string question, IReadOnlyList<(char Key, string Rest)> choices, char defaultKey)
+    {
+        if (!interactive)
+        {
+            return defaultKey;
+        }
+
+        var menu = string.Join(" / ", choices.Select(c =>
+            $"[{(c.Key == defaultKey ? char.ToUpperInvariant(c.Key) : c.Key)}]{c.Rest}"));
+
+        while (true)
+        {
+            output.Write($"{question} {menu}: ");
+            var answer = input.ReadLine();
+            if (answer is null)
+            {
+                return defaultKey; // input closed: behave like pressing Enter
+            }
+
+            answer = answer.Trim().ToLowerInvariant();
+            if (answer.Length == 0)
+            {
+                return defaultKey;
+            }
+
+            var key = answer[0];
+            if (choices.Any(c => c.Key == key))
+            {
+                return key;
+            }
+            output.WriteLine($"Please answer one of: {string.Join(", ", choices.Select(c => c.Key))}.");
+        }
+    }
+
     public bool Confirm(string question, bool defaultYes)
     {
         if (!interactive)
