@@ -31,6 +31,22 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: dotnet run --project src/DotnetLift.Cli -c Release --no-build -- analyze samples/LegacyShop --yes -o lift-report.md
 
+      - name: Upgrade the sample with dotnet-lift, then build the converted libraries
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          cp -r samples/LegacyShop "$RUNNER_TEMP/LegacyShop"
+          cd "$RUNNER_TEMP/LegacyShop"
+          git init -q
+          git config user.name ci
+          git config user.email ci@example.com
+          git add -A && git commit -qm "legacy sample"
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes
+          git log --oneline
+          cat LegacyShop.Data/LegacyShop.Data.csproj
+          dotnet build LegacyShop.Core/LegacyShop.Core.csproj
+          dotnet build LegacyShop.Data/LegacyShop.Data.csproj
+
       - name: Upload sample report
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
