@@ -40,7 +40,7 @@ public sealed class Prompt(TextReader input, TextWriter output, bool interactive
     /// <summary>
     /// One-letter menu, e.g. "[Y]es / [n]o / [q]uit". Each choice is its key plus the rest of the word.
     /// </summary>
-    public char Ask(string question, IReadOnlyList<(char Key, string Rest)> choices, char defaultKey)
+    public char Ask(string question, IReadOnlyList<(char Key, string Tail)> choices, char defaultKey)
     {
         if (!interactive)
         {
@@ -48,7 +48,7 @@ public sealed class Prompt(TextReader input, TextWriter output, bool interactive
         }
 
         var menu = string.Join(" / ", choices.Select(c =>
-            $"[{(c.Key == defaultKey ? char.ToUpperInvariant(c.Key) : c.Key)}]{c.Rest}"));
+            $"[{(c.Key == defaultKey ? char.ToUpperInvariant(c.Key) : c.Key)}]{c.Tail}"));
 
         while (true)
         {
