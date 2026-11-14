@@ -70,20 +70,20 @@ Git repository: /src/LegacyShop
 20 step(s), 4 can be done automatically right now.
 
 [1/20] LegacyShop.Core · Migrate packages.config to PackageReference  (automatic, low risk)
-    ~ LegacyShop.Core/LegacyShop.Core.csproj (+4 −4)
+    ~ LegacyShop.Core/LegacyShop.Core.csproj (+1 −4)
     - LegacyShop.Core/packages.config (delete)
   Apply this step? [Y]es / [n]o, skip / [d]iff / [a]ll remaining / [q]uit: y
   ✓ Applied and committed.
 
 [2/20] LegacyShop.Core · Convert to SDK-style project  (automatic, low risk)
-    ~ LegacyShop.Core/LegacyShop.Core.csproj (+20 −38)
+    ~ LegacyShop.Core/LegacyShop.Core.csproj (+7 −30)
   Apply this step? [Y]es / [n]o, skip / [d]iff / [a]ll remaining / [q]uit: d
   ...
 [3/20] LegacyShop.Core · Replace APIs removed from modern .NET  (agent-assisted, high risk)
   → Not automated yet; it stays in the report as a to-do.
 ```
 
-*(Abridged; line counts vary.)*
+*(Abridged output from CI.)*
 
 - `--yes` applies every automatic step without asking, `--dry-run` only shows the diffs.
 - Each applied step is one commit (`dotnet-lift: <step> (<project>)`), so `git revert` undoes exactly one step.
