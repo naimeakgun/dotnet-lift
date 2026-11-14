@@ -5,11 +5,11 @@ The goal for the first week: take a typical .NET Framework 4.8 solution (an ASP.
 | Version | What | Status |
 |---|---|---|
 | 0.1 | `analyze`: load .sln/.csproj without MSBuild, detect project kinds, scan packages, references, Web.config and source code, build a dependency-ordered plan, write a Markdown report, ask questions interactively | ✅ |
-| 0.2 | `upgrade`: interactive step runner (approve / skip / approve all / quit), git checkpoint per step, first automatic steps: SDK-style conversion and packages.config → PackageReference | ⏳ |
-| 0.3 | Retargeting (multi-target libraries while the web app is still on .NET Framework), `dotnet build` loop that reads compiler errors | ⏳ |
-| 0.4 | Web project: Program.cs from Global.asax/App_Start, appsettings.json from Web.config, static files to wwwroot | ⏳ |
-| 0.5 | LLM agent for agent-assisted steps: tool loop (read file, propose edit, build, read errors), diff preview and approval; works with Anthropic and OpenAI-compatible APIs | ⏳ |
-| 0.6 | Controllers and views: System.Web rewrites, ApiController → ControllerBase, child actions → View Components | ⏳ |
+| 0.2 | `upgrade`: interactive step runner (yes / skip / diff / all / quit, `--yes`, `--dry-run`), one git commit per step, automatic packages.config → PackageReference and legacy → SDK-style conversion for class libraries | ✅ |
+| 0.3 | Retarget libraries (`net48;net10.0`), then a **build → read errors → fix** loop: known compiler/NuGet errors (CS0246, CS0234, CS1061, CS0619, NU1202…) fixed from a catalog, Roslyn-based rewrites for well-known API changes | ⏳ |
+| 0.4 | LLM agent for errors the catalog cannot fix: proposes a diff, you approve, rebuild; iteration limit, stops and reports when stuck; works with Anthropic and OpenAI-compatible APIs | ⏳ |
+| 0.5 | Web project: ASP.NET Core project file, Program.cs from Global.asax/App_Start, appsettings.json from Web.config, static files to wwwroot | ⏳ |
+| 0.6 | Controllers and views: System.Web rewrites, ApiController → ControllerBase, child actions → View Components; tests and smoke tests after each step | ⏳ |
 | 1.0 | End-to-end: the LegacyShop sample upgraded to .NET 10 by the tool and running, docs and demo | ⏳ |
 
 ## Design principles

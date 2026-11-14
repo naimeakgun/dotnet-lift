@@ -4,13 +4,13 @@
 
 **Upgrade .NET Framework 4.x solutions to modern .NET, one reviewable step at a time.**
 
-`dotnet-lift` reads an ASP.NET MVC / Web API solution and the class libraries it uses, tells you exactly what stands between it and .NET 10, and builds an ordered upgrade plan. It asks questions as it goes, and the upgrade (coming next) runs step by step: approve each change, or let it run unattended.
+`dotnet-lift` reads an ASP.NET MVC / Web API solution and the class libraries it uses, tells you exactly what stands between it and .NET 10, and builds an ordered upgrade plan. It asks questions as it goes, and the upgrade runs step by step: approve each change, or let it run unattended. Every applied step is its own git commit.
 
 > Microsoft's .NET Upgrade Assistant is deprecated and its replacement needs a paid GitHub Copilot subscription. `dotnet-lift` is free, open source, runs from the command line on Windows, macOS and Linux, and does not depend on any one AI vendor.
 
 ## Status
 
-Early, built in public. `analyze` works today; `upgrade` is being built this week. See the [roadmap](docs/ROADMAP.md).
+Early, built in public. `analyze` works; `upgrade` automates the project-file steps (packages.config → PackageReference, legacy → SDK-style) and the build-and-fix loop is next. See the [roadmap](docs/ROADMAP.md).
 
 ## What it looks like
 
@@ -28,14 +28,14 @@ Projects (upgrade order):
   3. LegacyShop.Web               ASP.NET MVC + Web API    v4.8     3 blocker(s), 27 warning(s)
 
 Plan:
-   1. [auto ] [Low   ] LegacyShop.Core: Convert to SDK-style project
-   2. [auto ] [Low   ] LegacyShop.Core: Migrate packages.config to PackageReference
+   1. [auto ] [Low   ] LegacyShop.Core: Migrate packages.config to PackageReference
+   2. [auto ] [Low   ] LegacyShop.Core: Convert to SDK-style project
    3. [agent] [High  ] LegacyShop.Core: Replace APIs removed from modern .NET
    4. [agent] [Medium] LegacyShop.Core: Decouple from ConfigurationManager
    5. [auto ] [Medium] LegacyShop.Core: Retarget to net48;net10.0
    6. [auto ] [Low   ] LegacyShop.Core: Build and run tests
-   7. [auto ] [Low   ] LegacyShop.Data: Convert to SDK-style project
-   8. [auto ] [Low   ] LegacyShop.Data: Migrate packages.config to PackageReference
+   7. [auto ] [Low   ] LegacyShop.Data: Migrate packages.config to PackageReference
+   8. [auto ] [Low   ] LegacyShop.Data: Convert to SDK-style project
    9. [agent] [High  ] LegacyShop.Data: Remove the System.Web dependency
   10. [agent] [Medium] LegacyShop.Data: Keep EF 6 running on modern .NET
   11. [auto ] [Medium] LegacyShop.Data: Retarget to net48;net10.0
@@ -61,6 +61,36 @@ Write the full report to lift-report.md? [Y/n]:
 ```
 
 The Markdown report lists every finding with file, line and a suggested fix, grouped under the step that resolves it.
+
+### Upgrading
+
+```console
+$ dotnet-lift upgrade samples/LegacyShop --target net10.0
+Git repository: /src/LegacyShop
+20 step(s), 4 can be done automatically right now.
+
+[1/20] LegacyShop.Core · Migrate packages.config to PackageReference  (automatic, low risk)
+    ~ LegacyShop.Core/LegacyShop.Core.csproj (+4 −4)
+    - LegacyShop.Core/packages.config (delete)
+  Apply this step? [Y]es / [n]o, skip / [d]iff / [a]ll remaining / [q]uit: y
+  ✓ Applied and committed.
+
+[2/20] LegacyShop.Core · Convert to SDK-style project  (automatic, low risk)
+    ~ LegacyShop.Core/LegacyShop.Core.csproj (+20 −38)
+  Apply this step? [Y]es / [n]o, skip / [d]iff / [a]ll remaining / [q]uit: d
+  ...
+[3/20] LegacyShop.Core · Replace APIs removed from modern .NET  (agent-assisted, high risk)
+  → Not automated yet; it stays in the report as a to-do.
+```
+
+*(Abridged; line counts vary.)*
+
+- `--yes` applies every automatic step without asking, `--dry-run` only shows the diffs.
+- Each applied step is one commit (`dotnet-lift: <step> (<project>)`), so `git revert` undoes exactly one step.
+- The tool refuses to start on a working tree with uncommitted changes in unattended mode (`--allow-dirty` overrides).
+- Running `upgrade` again is safe: steps that are already done disappear from the plan.
+
+The SDK-style conversion keeps behaviour: the project still targets the same .NET Framework version, keeps its framework references, packages and project references, and files the old project did not compile get an explicit `<Compile Remove>`. CI converts the sample libraries with the tool and builds them on every push.
 
 ## What it checks
 
@@ -94,12 +124,15 @@ dotnet run --project src/DotnetLift.Cli -- analyze samples/LegacyShop
 
 ```
 dotnet-lift analyze [path] [options]
+dotnet-lift upgrade [path] [options]
 
   path                 A .sln, a .csproj or a folder (default: current folder)
   -t, --target <tfm>   net10.0 (default) or net11.0. Asked interactively if omitted.
   -o, --output <file>  Where to write the Markdown report
       --no-report      Print the summary only
-  -y, --yes            Do not ask questions; use defaults
+  -y, --yes            Do not ask questions; use defaults (upgrade: apply every automatic step)
+      --dry-run        upgrade: show what would change, write nothing
+      --allow-dirty    upgrade: run even with uncommitted changes
 ```
 
 ## Development
