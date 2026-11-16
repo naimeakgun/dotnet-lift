@@ -7,4 +7,9 @@
     <RootNamespace>DotnetLift.Core</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Roslyn: parse and rewrite C# as syntax trees instead of text. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+  </ItemGroup>
+
 </Project>
