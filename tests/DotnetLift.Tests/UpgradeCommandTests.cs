@@ -27,15 +27,16 @@ public class UpgradeCommandTests
     {
         var dir = RepoWithSample();
 
-        // Core: packages yes, SDK-style: show diff then yes, retarget yes.
+        // Core: packages yes, SDK-style: show diff then yes, retarget yes, BinaryFormatter no.
         // Data: packages skip, SDK-style yes, retarget yes, API rewrites yes.
-        var (exit, output) = await Run("y\nd\ny\ny\nn\ny\ny\ny\n", "upgrade", dir, "--target", "net10.0");
+        var (exit, output) = await Run("y\nd\ny\ny\nn\nn\ny\ny\ny\n", "upgrade", dir, "--target", "net10.0");
 
         Assert.Equal(0, exit);
         Assert.Contains("Apply this step?", output);
         Assert.Contains("--- LegacyShop.Core/LegacyShop.Core.csproj", output);
         Assert.Contains("Skipped.", output);
-        Assert.Contains("Applied 6, skipped 1", output);
+        Assert.Contains("Applied 6, skipped 2", output);
+        Assert.Contains("[y]es / [N]o, skip", output); // the risky step defaults to no
         Assert.Contains("LegacyShop.Core builds for net10.0", output);
 
         var subjects = Git.LogSubjects(dir);
@@ -61,6 +62,8 @@ public class UpgradeCommandTests
         Assert.Equal(0, exit);
         Assert.DoesNotContain("Apply this step?", output);
         Assert.Equal(7, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Contains("needs your explicit approval", output);
+        Assert.Contains("BinaryFormatter", File.ReadAllText(Path.Combine(dir, "LegacyShop.Core", "Services", "SnapshotSerializer.cs")));
         Assert.True(IsSdkStyle(dir, "LegacyShop.Core"));
         Assert.True(IsSdkStyle(dir, "LegacyShop.Data"));
     }
@@ -168,5 +171,20 @@ public class UpgradeCommandTests
         Assert.Contains("BinaryFormatter is removed from modern .NET.", text);
         Assert.Contains("LegacyShop.Core/Services/SnapshotSerializer.cs:13", text);
         Assert.Contains("errors left: LegacyShop.Core", text);
+    }
+
+    [Fact]
+    public async Task Accept_risky_applies_the_BinaryFormatter_rewrite_unattended()
+    {
+        var dir = RepoWithSample();
+
+        var (exit, output) = await Run("", "upgrade", dir, "--yes", "--accept-risky");
+
+        Assert.Equal(0, exit);
+        Assert.Contains("serialized format", output); // the warning is still printed
+        Assert.Contains("dotnet-lift: Replace BinaryFormatter with System.Text.Json (LegacyShop.Core)", Git.LogSubjects(dir));
+        Assert.Equal(8, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        var serializer = File.ReadAllText(Path.Combine(dir, "LegacyShop.Core", "Services", "SnapshotSerializer.cs"));
+        Assert.Contains("JsonSerializer.Deserialize<T>(ms)", serializer);
     }
 }

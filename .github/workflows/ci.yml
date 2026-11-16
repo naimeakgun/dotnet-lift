@@ -41,12 +41,14 @@ jobs:
           git config user.name ci
           git config user.email ci@example.com
           git add -A && git commit -qm "legacy sample"
-          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes --accept-risky
           git log --oneline
           cat LegacyShop.Data/LegacyShop.Data.csproj
           # The .NET Framework target must keep building: the old web app still uses these libraries.
           dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net48
           dotnet build LegacyShop.Data/LegacyShop.Data.csproj -f net48
+          # Core has no System.Web dependency: after the upgrade it must build for net10.0 as well.
+          dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net10.0
 
       - name: Upload sample report
         if: matrix.os == 'ubuntu-latest'

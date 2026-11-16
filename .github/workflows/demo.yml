@@ -43,7 +43,7 @@ jobs:
           git add -A
           git commit -qm "LegacyShop before the upgrade (.NET Framework 4.8)"
 
-          $LIFT upgrade . --yes --target net10.0
+          $LIFT upgrade . --yes --accept-risky --target net10.0
 
           $LIFT analyze . --yes --target net10.0 -o lift-report.md
           git add lift-report.md
@@ -58,6 +58,8 @@ jobs:
           # The .NET Framework target must keep building: the old web app still uses these libraries.
           dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net48
           dotnet build LegacyShop.Data/LegacyShop.Data.csproj -f net48
+          # Core has no System.Web dependency: after the upgrade it must build for net10.0 as well.
+          dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net10.0
 
       - name: Push demo/upgraded-sample
         shell: bash
