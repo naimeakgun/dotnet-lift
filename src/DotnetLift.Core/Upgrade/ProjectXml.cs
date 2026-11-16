@@ -38,6 +38,43 @@ internal static class ProjectXml
         }
     }
 
+    /// <summary>Adds an item group after the last property/item group, separated by a blank line.</summary>
+    public static void AddItemGroup(XElement root, XElement group, IEnumerable<XElement> items)
+    {
+        var indent = ChildIndent(root);
+        foreach (var item in items)
+        {
+            group.Add(new XText(Environment.NewLine + indent + indent), item);
+        }
+        group.Add(new XText(Environment.NewLine + indent));
+
+        var anchor = root.Elements().LastOrDefault(e => e.Name.LocalName is "ItemGroup" or "PropertyGroup");
+        if (anchor is not null)
+        {
+            anchor.AddAfterSelf(new XText(Environment.NewLine + Environment.NewLine + indent), group);
+        }
+        else
+        {
+            root.Add(new XText(Environment.NewLine + indent), group, new XText(Environment.NewLine));
+        }
+    }
+
+    /// <summary>Appends an item to an existing group, keeping the group's closing tag on its own line.</summary>
+    public static void AddToItemGroup(XElement root, XElement group, XElement item)
+    {
+        var indent = ChildIndent(root);
+        if (group.LastNode is XText trailing && string.IsNullOrWhiteSpace(trailing.Value))
+        {
+            trailing.AddBeforeSelf(new XText(Environment.NewLine + indent + indent), item);
+        }
+        else
+        {
+            group.Add(new XText(Environment.NewLine + indent + indent), item, new XText(Environment.NewLine + indent));
+        }
+    }
+
+    public static string TargetFrameworkCondition(string tfm) => $"'$(TargetFramework)' == '{tfm}'";
+
     /// <summary>The indentation used for direct children of the root element ("  " if it cannot be detected).</summary>
     public static string ChildIndent(XElement root)
     {

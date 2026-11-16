@@ -233,7 +233,13 @@ public sealed class SdkStyleConversion : IStepExecutor
             return "net48";
         }
 
-        var v = targetFrameworkVersion.Trim().TrimStart('v', 'V');
+        var t = targetFrameworkVersion.Trim();
+        if (t.StartsWith("net", StringComparison.OrdinalIgnoreCase))
+        {
+            return t.ToLowerInvariant(); // already a TFM (SDK-style project)
+        }
+
+        var v = t.TrimStart('v', 'V');
         var digits = v.Replace(".", "");
         return digits.Length > 0 && digits.All(char.IsDigit) ? "net" + digits : "net48";
     }

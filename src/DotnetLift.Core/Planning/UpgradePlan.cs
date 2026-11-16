@@ -29,7 +29,8 @@ public sealed record UpgradeStep(
     string Description,
     StepMode Mode,
     Risk Risk,
-    IReadOnlyList<Finding> Findings);
+    IReadOnlyList<Finding> Findings,
+    string? Argument = null);
 
 public sealed class UpgradePlan
 {

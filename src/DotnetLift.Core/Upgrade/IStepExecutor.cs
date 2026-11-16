@@ -22,6 +22,7 @@ public static class StepExecutors
     [
         new PackageReferenceMigration(),
         new SdkStyleConversion(),
+        new Retarget(),
     ];
 
     public static IStepExecutor? For(UpgradeStep step, ProjectInfo project) =>

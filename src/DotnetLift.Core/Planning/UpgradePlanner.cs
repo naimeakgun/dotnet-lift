@@ -1,5 +1,6 @@
 using DotnetLift.Core.Analyzers;
 using DotnetLift.Core.Model;
+using DotnetLift.Core.Upgrade;
 
 namespace DotnetLift.Core.Planning;
 
@@ -80,15 +81,17 @@ public static class UpgradePlanner
                 f => f.Message.StartsWith("EntityFramework ") || f.Category == "Entity Framework");
         }
 
-        var tfm = consumedByFrameworkApp ? $"net48;{target}" : target;
+        var current = SdkStyleConversion.ToTfm(p.TargetFramework);
+        var tfm = consumedByFrameworkApp ? $"{current};{target}" : target;
         b.Add("retarget", $"Retarget to {tfm}",
             consumedByFrameworkApp
-                ? $"Multi-target net48 and {target}: the .NET Framework web project keeps working while it is being migrated, and the library is ready for the new one."
+                ? $"Multi-target {current} and {target}: the .NET Framework web project keeps working while it is being migrated, and the library is ready for the new one. Framework-only references are limited to {current}."
                 : $"Change the target framework to {target}.",
-            StepMode.Automatic, Risk.Medium, f => f.Category == "Target framework");
+            StepMode.Automatic, Risk.Medium, f => f.Category == "Target framework", argument: tfm);
 
-        b.Add("build", "Build and run tests", "Run dotnet build (and dotnet test if there are tests) and fix what breaks.",
-            StepMode.Automatic, Risk.Low, _ => false);
+        b.Add("build", $"Build for {target} and fix errors",
+            $"Build the {target} target, fix known errors automatically (for example a missing package) and rebuild, then list the errors that need a code change with what to do about them.",
+            StepMode.Automatic, Risk.Low, _ => false, argument: target);
     }
 
     private static void AddWebSteps(StepBuilder b, ProjectInfo p, string target)
@@ -196,11 +199,12 @@ public static class UpgradePlanner
     {
         public bool Has(Func<Finding, bool> predicate) => findings.Any(predicate);
 
-        public void Add(string id, string title, string description, StepMode mode, Risk risk, Func<Finding, bool> related)
+        public void Add(string id, string title, string description, StepMode mode, Risk risk, Func<Finding, bool> related,
+            string? argument = null)
         {
             var matched = findings.Where(related).ToList();
             var effectiveRisk = matched.Any(f => f.Severity == Severity.Blocker) ? Risk.High : risk;
-            steps.Add(new UpgradeStep(steps.Count + 1, project.Name, id, title, description, mode, effectiveRisk, matched));
+            steps.Add(new UpgradeStep(steps.Count + 1, project.Name, id, title, description, mode, effectiveRisk, matched, argument));
         }
     }
 }
