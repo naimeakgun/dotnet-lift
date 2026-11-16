@@ -27,18 +27,20 @@ public class UpgradeCommandTests
     {
         var dir = RepoWithSample();
 
-        // Core: packages yes, SDK-style: show diff then yes, retarget yes. Data: packages skip, SDK-style yes, retarget yes.
-        var (exit, output) = await Run("y\nd\ny\ny\nn\ny\ny\n", "upgrade", dir, "--target", "net10.0");
+        // Core: packages yes, SDK-style: show diff then yes, retarget yes.
+        // Data: packages skip, SDK-style yes, retarget yes, API rewrites yes.
+        var (exit, output) = await Run("y\nd\ny\ny\nn\ny\ny\ny\n", "upgrade", dir, "--target", "net10.0");
 
         Assert.Equal(0, exit);
         Assert.Contains("Apply this step?", output);
         Assert.Contains("--- LegacyShop.Core/LegacyShop.Core.csproj", output);
         Assert.Contains("Skipped.", output);
-        Assert.Contains("Applied 5, skipped 1", output);
+        Assert.Contains("Applied 6, skipped 1", output);
         Assert.Contains("LegacyShop.Core builds for net10.0", output);
 
         var subjects = Git.LogSubjects(dir);
-        Assert.Equal(5, subjects.Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(6, subjects.Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Contains("dotnet-lift: Rewrite well-known APIs (Roslyn) (LegacyShop.Data)", subjects);
         Assert.Contains("dotnet-lift: Retarget to net48;net10.0 (LegacyShop.Core)", subjects);
         Assert.Contains("dotnet-lift: Convert to SDK-style project (LegacyShop.Data)", subjects);
         Assert.Equal("", Git.Status(dir)); // everything the tool wrote is committed
@@ -58,7 +60,7 @@ public class UpgradeCommandTests
 
         Assert.Equal(0, exit);
         Assert.DoesNotContain("Apply this step?", output);
-        Assert.Equal(6, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(7, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
         Assert.True(IsSdkStyle(dir, "LegacyShop.Core"));
         Assert.True(IsSdkStyle(dir, "LegacyShop.Data"));
     }
@@ -73,7 +75,7 @@ public class UpgradeCommandTests
 
         Assert.Equal(0, exit);
         Assert.Contains("Applied 0", output);
-        Assert.Equal(6, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(7, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
     }
 
     [Fact]
