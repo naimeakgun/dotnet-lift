@@ -58,11 +58,13 @@ public static class UpgradePlanner
                 f => f.Category == "System.Web API" || (f.Category == "Dependency" && f.Message.Contains("System.Web")));
         }
 
-        if (b.Has(f => f.Category is "Removed API" or "Obsolete API"))
+        static bool IsBinaryFormatter(Finding f) => f.Message.StartsWith("BinaryFormatter");
+
+        if (b.Has(f => f.Category is "Removed API" or "Obsolete API" && !IsBinaryFormatter(f)))
         {
             b.Add("removed-apis", "Replace APIs removed from modern .NET",
-                "Rewrite usages of APIs such as BinaryFormatter, Thread.Abort or AppDomain.CreateDomain. Persisted data may need a migration.",
-                StepMode.AgentAssisted, Risk.High, f => f.Category is "Removed API" or "Obsolete API");
+                "Rewrite usages of APIs such as Thread.Abort or AppDomain.CreateDomain.",
+                StepMode.AgentAssisted, Risk.High, f => f.Category is "Removed API" or "Obsolete API" && !IsBinaryFormatter(f));
         }
 
         if (b.Has(f => f.Category == "Configuration" && f.Message.Contains("ConfigurationManager")))
@@ -94,6 +96,13 @@ public static class UpgradePlanner
             b.Add("api-rewrites", "Rewrite well-known APIs (Roslyn)",
                 "HttpRuntime.Cache becomes MemoryCache.Default (System.Runtime.Caching), which works on both .NET Framework and modern .NET. Only calls with an exact equivalent are rewritten; anything else is left for the build step to report.",
                 StepMode.Automatic, Risk.Low, f => f.Message.StartsWith("HttpRuntime.Cache"));
+        }
+
+        if (b.Has(IsBinaryFormatter))
+        {
+            b.Add("binaryformatter-json", "Replace BinaryFormatter with System.Text.Json",
+                "new BinaryFormatter().Serialize(stream, value) and (T)new BinaryFormatter().Deserialize(stream) become System.Text.Json calls, which build for both targets. The serialized format changes, so this step only runs after your explicit approval.",
+                StepMode.Automatic, Risk.High, IsBinaryFormatter);
         }
 
         b.Add("build", $"Build for {target} and fix errors",

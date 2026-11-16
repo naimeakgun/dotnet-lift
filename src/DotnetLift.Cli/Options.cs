@@ -10,6 +10,7 @@ public sealed class Options
     public bool NoReport { get; private set; }
     public bool DryRun { get; private set; }
     public bool AllowDirty { get; private set; }
+    public bool AcceptRisky { get; private set; }
 
     public static readonly string[] SupportedTargets = ["net10.0", "net11.0"];
 
@@ -47,6 +48,9 @@ public sealed class Options
                     break;
                 case "--allow-dirty":
                     o.AllowDirty = true;
+                    break;
+                case "--accept-risky":
+                    o.AcceptRisky = true;
                     break;
                 default:
                     if (a.StartsWith('-'))

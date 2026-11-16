@@ -96,7 +96,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
 
         _out.WriteLine($"Target: {target}");
         var plan = UpgradePlanner.Create(analysis);
-        var settings = new UpgradeRunner.Settings(options.Yes, options.DryRun, options.AllowDirty);
+        var settings = new UpgradeRunner.Settings(options.Yes, options.DryRun, options.AllowDirty, options.AcceptRisky);
         return new UpgradeRunner(_prompt, _out, _builder).Run(analysis, plan, settings);
     }
 
@@ -192,6 +192,8 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
               -y, --yes            Do not ask questions; use defaults (upgrade: apply every automatic step)
                   --dry-run        upgrade: show what would change, write nothing
                   --allow-dirty    upgrade: run even if the git working tree has uncommitted changes
+                  --accept-risky   upgrade: also apply steps that change behaviour (e.g. a serialization format)
+                                   without asking; without it they always ask, and --yes skips them
               -h, --help           Show this help
                   --version        Show the version
             """);

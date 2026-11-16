@@ -23,6 +23,10 @@ public sealed class ApiRewrites : IStepExecutor
     {
         var current = ProjectLoader.Load(project.FullPath);
         var changes = new List<FileChange>();
+        if (!current.IsSdkStyle)
+        {
+            return changes; // the rewritten code needs references only an SDK-style project file can scope per target
+        }
 
         foreach (var file in current.SourceFiles)
         {
@@ -34,7 +38,7 @@ public sealed class ApiRewrites : IStepExecutor
             }
         }
 
-        if (changes.Count > 0 && current.IsSdkStyle)
+        if (changes.Count > 0)
         {
             var csproj = AddRuntimeCaching(current);
             if (csproj is not null)
@@ -63,7 +67,7 @@ public sealed class ApiRewrites : IStepExecutor
         var framework = targets.FirstOrDefault(ProjectFormatAnalyzer.IsNetFramework);
         if (framework is not null && !project.References("System.Runtime.Caching"))
         {
-            Add(root, multi ? framework : null,
+            ProjectXml.AddItem(root, multi ? framework : null,
                 new XElement(ns + "Reference", new XAttribute("Include", "System.Runtime.Caching")));
             changed = true;
         }
@@ -71,7 +75,7 @@ public sealed class ApiRewrites : IStepExecutor
         var modern = targets.FirstOrDefault(t => !ProjectFormatAnalyzer.IsNetFramework(t));
         if (modern is not null && !project.HasPackage("System.Runtime.Caching"))
         {
-            Add(root, multi ? modern : null,
+            ProjectXml.AddItem(root, multi ? modern : null,
                 new XElement(ns + "PackageReference",
                     new XAttribute("Include", "System.Runtime.Caching"),
                     new XAttribute("Version", RuntimeCachingPackageVersion)));
@@ -79,26 +83,5 @@ public sealed class ApiRewrites : IStepExecutor
         }
 
         return changed ? ProjectXml.Serialize(doc) : null;
-    }
-
-    private static void Add(XElement root, string? conditionTfm, XElement item)
-    {
-        var condition = conditionTfm is null ? null : ProjectXml.TargetFrameworkCondition(conditionTfm);
-        var group = ProjectXml.Elements(root, "ItemGroup").FirstOrDefault(g =>
-            condition is null
-                ? g.Attribute("Condition") is null && g.Elements().Any(e => e.Name.LocalName == item.Name.LocalName)
-                : g.Attribute("Condition")?.Value == condition);
-
-        if (group is null)
-        {
-            group = condition is null
-                ? new XElement(root.Name.Namespace + "ItemGroup")
-                : new XElement(root.Name.Namespace + "ItemGroup", new XAttribute("Condition", condition));
-            ProjectXml.AddItemGroup(root, group, [item]);
-        }
-        else
-        {
-            ProjectXml.AddToItemGroup(root, group, item);
-        }
     }
 }

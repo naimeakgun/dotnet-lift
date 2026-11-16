@@ -14,6 +14,15 @@ public interface IStepExecutor
     bool CanExecute(ProjectInfo project);
 
     IReadOnlyList<FileChange> Prepare(ProjectInfo project, UpgradeStep step, string targetFramework);
+
+    /// <summary>
+    /// Steps that change behaviour in a way the user must accept (e.g. a data format) are never applied by --yes alone,
+    /// and the interactive question defaults to "no".
+    /// </summary>
+    bool RequiresExplicitApproval => false;
+
+    /// <summary>Shown before asking, when <see cref="RequiresExplicitApproval"/> is true.</summary>
+    string? ApprovalNote => null;
 }
 
 public static class StepExecutors
@@ -24,6 +33,7 @@ public static class StepExecutors
         new SdkStyleConversion(),
         new Retarget(),
         new ApiRewrites(),
+        new BinaryFormatterToJson(),
     ];
 
     public static IStepExecutor? For(UpgradeStep step, ProjectInfo project) =>

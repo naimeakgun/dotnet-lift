@@ -75,6 +75,31 @@ internal static class ProjectXml
 
     public static string TargetFrameworkCondition(string tfm) => $"'$(TargetFramework)' == '{tfm}'";
 
+    /// <summary>
+    /// Adds an item to the item group for <paramref name="conditionTfm"/> (creating it if needed),
+    /// or, without a target, to the first unconditional group holding the same kind of item.
+    /// </summary>
+    public static void AddItem(XElement root, string? conditionTfm, XElement item)
+    {
+        var condition = conditionTfm is null ? null : TargetFrameworkCondition(conditionTfm);
+        var group = Elements(root, "ItemGroup").FirstOrDefault(g =>
+            condition is null
+                ? g.Attribute("Condition") is null && g.Elements().Any(e => e.Name.LocalName == item.Name.LocalName)
+                : g.Attribute("Condition")?.Value == condition);
+
+        if (group is null)
+        {
+            group = condition is null
+                ? new XElement(root.Name.Namespace + "ItemGroup")
+                : new XElement(root.Name.Namespace + "ItemGroup", new XAttribute("Condition", condition));
+            AddItemGroup(root, group, [item]);
+        }
+        else
+        {
+            AddToItemGroup(root, group, item);
+        }
+    }
+
     /// <summary>The indentation used for direct children of the root element ("  " if it cannot be detected).</summary>
     public static string ChildIndent(XElement root)
     {

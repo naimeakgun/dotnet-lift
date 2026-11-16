@@ -9,7 +9,7 @@ namespace DotnetLift.Cli;
 /// <summary>Walks the plan step by step: shows what will change, asks, applies, commits.</summary>
 public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder builder)
 {
-    public sealed record Settings(bool Yes, bool DryRun, bool AllowDirty);
+    public sealed record Settings(bool Yes, bool DryRun, bool AllowDirty, bool AcceptRisky = false);
 
     public sealed record Summary(int Applied, int Skipped, int NotAutomated, int NothingToDo, bool Quit,
         List<string> BuildsOk, List<string> BuildsWithErrors);
@@ -149,6 +149,10 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
 
             output.WriteLine($"  {step.Description}");
             PrintChanges(changes, root);
+            if (executor.RequiresExplicitApproval)
+            {
+                output.WriteLine($"  ⚠ {executor.ApprovalNote}");
+            }
 
             if (settings.DryRun)
             {
@@ -156,9 +160,18 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
                 continue;
             }
 
-            if (!applyAll)
+            // Behaviour-changing steps: never applied by --yes alone, and the question defaults to "no".
+            var mustConfirm = executor.RequiresExplicitApproval && !settings.AcceptRisky;
+            if (settings.Yes && mustConfirm)
             {
-                var decision = AskApply("  Apply this step?", changes, root);
+                output.WriteLine("  → Not applied: this step needs your explicit approval. Run without --yes to decide, or add --accept-risky.");
+                skipped++;
+                continue;
+            }
+
+            if (!applyAll || mustConfirm)
+            {
+                var decision = AskApply("  Apply this step?", changes, root, mustConfirm ? 'n' : 'y');
                 if (decision == 'q')
                 {
                     return Done(quit: true);
@@ -169,7 +182,7 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
                     skipped++;
                     continue;
                 }
-                if (decision == 'a')
+                if (decision == 'a' && !mustConfirm)
                 {
                     applyAll = true;
                 }
@@ -185,12 +198,12 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
 
     private static bool IsBuildLoop(UpgradeStep step, ProjectInfo project) => step.Id == "build" && !project.IsWeb;
 
-    private char AskApply(string question, IReadOnlyList<FileChange> changes, string root)
+    private char AskApply(string question, IReadOnlyList<FileChange> changes, string root, char defaultKey = 'y')
     {
         while (true)
         {
             var c = prompt.Ask(question,
-                [('y', "es"), ('n', "o, skip"), ('d', "iff"), ('a', "ll remaining"), ('q', "uit")], 'y');
+                [('y', "es"), ('n', "o, skip"), ('d', "iff"), ('a', "ll remaining"), ('q', "uit")], defaultKey);
             if (c != 'd')
             {
                 return c;
