@@ -89,6 +89,13 @@ public static class UpgradePlanner
                 : $"Change the target framework to {target}.",
             StepMode.Automatic, Risk.Medium, f => f.Category == "Target framework", argument: tfm);
 
+        if (b.Has(f => f.Message.StartsWith("HttpRuntime.Cache")))
+        {
+            b.Add("api-rewrites", "Rewrite well-known APIs (Roslyn)",
+                "HttpRuntime.Cache becomes MemoryCache.Default (System.Runtime.Caching), which works on both .NET Framework and modern .NET. Only calls with an exact equivalent are rewritten; anything else is left for the build step to report.",
+                StepMode.Automatic, Risk.Low, f => f.Message.StartsWith("HttpRuntime.Cache"));
+        }
+
         b.Add("build", $"Build for {target} and fix errors",
             $"Build the {target} target, fix known errors automatically (for example a missing package) and rebuild, then list the errors that need a code change with what to do about them.",
             StepMode.Automatic, Risk.Low, _ => false, argument: target);
