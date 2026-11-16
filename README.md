@@ -13,9 +13,9 @@
 Early, built in public. Working today:
 
 - `analyze`: findings with file and line, an ordered plan, a Markdown report.
-- `upgrade`: packages.config → PackageReference, legacy → SDK-style, retarget libraries to `net48;net10.0`, **Roslyn rewrites** for well-known APIs (`HttpRuntime.Cache` → `MemoryCache`), then a **build → read errors → fix → rebuild** loop that fixes known errors (missing packages) and explains the ones that need a code change.
+- `upgrade`: packages.config → PackageReference, legacy → SDK-style, retarget libraries to `net48;net10.0`, **Roslyn rewrites** for well-known APIs (`HttpRuntime.Cache` → `MemoryCache`, and `BinaryFormatter` → `System.Text.Json` with explicit approval), then a **build → read errors → fix → rebuild** loop that fixes known errors (missing packages) and explains the ones that need a code change.
 
-Next: more rewrites (an opt-in `BinaryFormatter` → `System.Text.Json` rewrite), then the web project. See the [roadmap](docs/ROADMAP.md).
+On the sample, the core library now **builds for .NET 10** after `dotnet-lift upgrade`, and the data library is down to the two lines that read `HttpContext.Current`. Next: decoupling libraries from `System.Web`, then the web project. See the [roadmap](docs/ROADMAP.md).
 
 ## What it looks like
 
@@ -71,42 +71,56 @@ The Markdown report lists every finding with file, line and a suggested fix, gro
 
 ```console
 $ dotnet-lift upgrade samples/LegacyShop --target net10.0
-20 step(s), 8 can be done automatically right now.
+21 step(s), 9 can be done automatically right now.
 
-[1/20] LegacyShop.Core · Migrate packages.config to PackageReference  (automatic, low risk)
+[1/21] LegacyShop.Core · Migrate packages.config to PackageReference  (automatic, low risk)
     ~ LegacyShop.Core/LegacyShop.Core.csproj (+1 −4)
     - LegacyShop.Core/packages.config (delete)
   Apply this step? [Y]es / [n]o, skip / [d]iff / [a]ll remaining / [q]uit: y
   ✓ Applied and committed.
-[2/20] LegacyShop.Core · Convert to SDK-style project  (automatic, low risk)
+[2/21] LegacyShop.Core · Convert to SDK-style project  (automatic, low risk)
     ~ LegacyShop.Core/LegacyShop.Core.csproj (+7 −30)
   ✓ Applied and committed.
-[5/20] LegacyShop.Core · Retarget to net48;net10.0  (automatic, medium risk)
+[4/21] LegacyShop.Core · Retarget to net48;net10.0  (automatic, medium risk)
     ~ LegacyShop.Core/LegacyShop.Core.csproj (+4 −4)
   ✓ Applied and committed.
-[6/20] LegacyShop.Core · Build for net10.0 and fix errors  (automatic, low risk)
+[5/21] LegacyShop.Core · Replace BinaryFormatter with System.Text.Json  (automatic, high risk)
+    ~ LegacyShop.Core/Services/SnapshotSerializer.cs (+3 −3)
+    ~ LegacyShop.Core/LegacyShop.Core.csproj (+1 −0)
+  ⚠ This changes the serialized format. Anything the old code wrote with BinaryFormatter (cookies, files,
+    cache entries, database columns) cannot be read by the new code. ...
+  Apply this step? [y]es / [N]o, skip / [d]iff / [a]ll remaining / [q]uit: y
+  ✓ Applied and committed.
+[6/21] LegacyShop.Core · Build for net10.0 and fix errors  (automatic, low risk)
   Building for net10.0...
   Fix: Add package System.Configuration.ConfigurationManager 10.0.0 for net10.0  (resolves CS0103 ×2)
     ~ LegacyShop.Core/LegacyShop.Core.csproj (+4 −0)
   ✓ Applied and committed.
   Building again (attempt 2)...
-  ✗ 2 error(s) left that need a code change:
-    • BinaryFormatter is removed from modern .NET.
-      → Serialize with System.Text.Json (or MessagePack/protobuf). If serialized data is stored somewhere
-        (cookies, files, a database), plan how existing data is read once and rewritten.
-      LegacyShop.Core/Services/SnapshotSerializer.cs:13  SYSLIB0011  'BinaryFormatter' is obsolete ...
-      LegacyShop.Core/Services/SnapshotSerializer.cs:22  SYSLIB0011  'BinaryFormatter' is obsolete ...
+  ✓ LegacyShop.Core builds for net10.0.
 ...
-[12/20] LegacyShop.Data · Build for net10.0 and fix errors  (automatic, low risk)
-  ✗ Cannot build for net10.0 yet: LegacyShop.Core has errors for net10.0. Fix those first.
+[12/21] LegacyShop.Data · Rewrite well-known APIs (Roslyn)  (automatic, low risk)
+    ~ LegacyShop.Data/Repositories/ProductRepository.cs (+3 −4)
+    ~ LegacyShop.Data/LegacyShop.Data.csproj (+5 −0)
+  ✓ Applied and committed.
+[13/21] LegacyShop.Data · Build for net10.0 and fix errors  (automatic, low risk)
+  Building for net10.0...
+  ✗ 2 error(s) left that need a code change:
+    • The library uses System.Web, which does not exist on modern .NET.
+      → Do not reach into the web request from a library. Pass in what is needed (user name, settings), or
+        depend on a small interface (ICurrentUser) ...
+      LegacyShop.Data/Repositories/ProductRepository.cs:41  CS0103  The name 'HttpContext' does not exist ...
+      LegacyShop.Data/Repositories/ProductRepository.cs:42  CS0103  The name 'HttpContext' does not exist ...
 
-Applied 7, skipped 0, nothing to change 0, not automated yet 12.
+Applied 9, skipped 0, nothing to change 0, not automated yet 11.
+Builds for net10.0: ok: LegacyShop.Core; errors left: LegacyShop.Data
 ```
 
 *(Abridged output of a real CI run: the build-fix loop runs the real `dotnet build`.)*
 
 - `--yes` applies every automatic step without asking, `--dry-run` only shows the diffs.
 - Each applied step is one commit (`dotnet-lift: <step> (<project>)`), so `git revert` undoes exactly one step.
+- Steps that change behaviour (today: the serialization format) are marked ⚠, default to **no** when asked, and are skipped by `--yes`. Add `--accept-risky` to apply them unattended.
 - The tool refuses to start on a working tree with uncommitted changes in unattended mode (`--allow-dirty` overrides).
 - Running `upgrade` again is safe: steps that are already done disappear from the plan.
 
@@ -159,6 +173,7 @@ dotnet-lift upgrade [path] [options]
   -y, --yes            Do not ask questions; use defaults (upgrade: apply every automatic step)
       --dry-run        upgrade: show what would change, write nothing
       --allow-dirty    upgrade: run even with uncommitted changes
+      --accept-risky   upgrade: also apply behaviour-changing steps without asking
 ```
 
 ## Development
