@@ -15,7 +15,7 @@ public class UpgradeCommandTests
     private static async Task<(int Exit, string Output)> Run(string input, params string[] args)
     {
         var output = new StringWriter();
-        var exit = await new App(new StringReader(input), output, interactive: true).RunAsync(args);
+        var exit = await new App(new StringReader(input), output, interactive: true, new FakeBuilder()).RunAsync(args);
         return (exit, output.ToString());
     }
 
@@ -27,17 +27,19 @@ public class UpgradeCommandTests
     {
         var dir = RepoWithSample();
 
-        // Core: packages yes, SDK-style: show diff then yes. Data: packages skip, SDK-style yes.
-        var (exit, output) = await Run("y\nd\ny\nn\ny\n", "upgrade", dir, "--target", "net10.0");
+        // Core: packages yes, SDK-style: show diff then yes, retarget yes. Data: packages skip, SDK-style yes, retarget yes.
+        var (exit, output) = await Run("y\nd\ny\ny\nn\ny\ny\n", "upgrade", dir, "--target", "net10.0");
 
         Assert.Equal(0, exit);
         Assert.Contains("Apply this step?", output);
         Assert.Contains("--- LegacyShop.Core/LegacyShop.Core.csproj", output);
         Assert.Contains("Skipped.", output);
-        Assert.Contains("Applied 3, skipped 1", output);
+        Assert.Contains("Applied 5, skipped 1", output);
+        Assert.Contains("LegacyShop.Core builds for net10.0", output);
 
         var subjects = Git.LogSubjects(dir);
-        Assert.Equal(3, subjects.Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(5, subjects.Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Contains("dotnet-lift: Retarget to net48;net10.0 (LegacyShop.Core)", subjects);
         Assert.Contains("dotnet-lift: Convert to SDK-style project (LegacyShop.Data)", subjects);
         Assert.Equal("", Git.Status(dir)); // everything the tool wrote is committed
 
@@ -56,7 +58,7 @@ public class UpgradeCommandTests
 
         Assert.Equal(0, exit);
         Assert.DoesNotContain("Apply this step?", output);
-        Assert.Equal(4, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(6, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
         Assert.True(IsSdkStyle(dir, "LegacyShop.Core"));
         Assert.True(IsSdkStyle(dir, "LegacyShop.Data"));
     }
@@ -71,7 +73,7 @@ public class UpgradeCommandTests
 
         Assert.Equal(0, exit);
         Assert.Contains("Applied 0", output);
-        Assert.Equal(4, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(6, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
     }
 
     [Fact]
@@ -124,5 +126,45 @@ public class UpgradeCommandTests
         Assert.Equal(0, exit);
         Assert.Contains("No git repository found", output);
         Assert.True(IsSdkStyle(dir, "LegacyShop.Core"));
+    }
+
+    [Fact]
+    public async Task Build_fixes_are_offered_and_committed()
+    {
+        var dir = RepoWithSample();
+        var core = Path.Combine(dir, "LegacyShop.Core", "LegacyShop.Core.csproj");
+        var missing = new DotnetLift.Core.Build.Diagnostic("CS0103",
+            "The name 'ConfigurationManager' does not exist in the current context",
+            Path.Combine(dir, "LegacyShop.Core", "Services", "AppSettings.cs"), 12, core);
+        var builder = new FakeBuilder(FakeBuilder.Failure(missing), FakeBuilder.Success);
+        var output = new StringWriter();
+
+        var exit = await new App(new StringReader(""), output, interactive: true, builder)
+            .RunAsync(["upgrade", dir, "--yes", "--target", "net10.0"]);
+
+        Assert.Equal(0, exit);
+        Assert.Contains("Fix: Add package System.Configuration.ConfigurationManager 10.0.0 for net10.0", output.ToString());
+        Assert.Contains("dotnet-lift: Add package System.Configuration.ConfigurationManager 10.0.0 for net10.0 (LegacyShop.Core)",
+            Git.LogSubjects(dir));
+        Assert.Equal("", Git.Status(dir));
+    }
+
+    [Fact]
+    public async Task Errors_that_need_a_code_change_are_explained()
+    {
+        var dir = RepoWithSample();
+        var core = Path.Combine(dir, "LegacyShop.Core", "LegacyShop.Core.csproj");
+        var obsolete = new DotnetLift.Core.Build.Diagnostic("SYSLIB0011", "'BinaryFormatter' is obsolete",
+            Path.Combine(dir, "LegacyShop.Core", "Services", "SnapshotSerializer.cs"), 13, core);
+        var output = new StringWriter();
+
+        await new App(new StringReader(""), output, interactive: true, new FakeBuilder(FakeBuilder.Failure(obsolete)))
+            .RunAsync(["upgrade", dir, "--yes", "--target", "net10.0"]);
+
+        var text = output.ToString();
+        Assert.Contains("1 error(s) left that need a code change", text);
+        Assert.Contains("BinaryFormatter is removed from modern .NET.", text);
+        Assert.Contains("LegacyShop.Core/Services/SnapshotSerializer.cs:13", text);
+        Assert.Contains("errors left: LegacyShop.Core", text);
     }
 }

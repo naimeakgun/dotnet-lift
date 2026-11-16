@@ -1,6 +1,6 @@
 # Expected output (snapshot)
 
-The files in this folder are what `dotnet-lift upgrade --yes` must produce for `samples/LegacyShop`.
+The files in this folder are what `dotnet-lift upgrade --yes` must produce (with a build that succeeds, so no build fixes) for `samples/LegacyShop`.
 `SnapshotTests` runs the upgrade on a copy of the sample and compares every file here with the result,
 so any change to the generated project files shows up as a failing test and a reviewable diff.
 

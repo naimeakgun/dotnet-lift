@@ -51,12 +51,13 @@ jobs:
 
           git log --oneline
 
-      - name: Build the upgraded libraries
+      - name: Check the libraries still build for .NET Framework
         shell: bash
         run: |
           cd "$RUNNER_TEMP/demo"
-          dotnet build LegacyShop.Core/LegacyShop.Core.csproj
-          dotnet build LegacyShop.Data/LegacyShop.Data.csproj
+          # The .NET Framework target must keep building: the old web app still uses these libraries.
+          dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net48
+          dotnet build LegacyShop.Data/LegacyShop.Data.csproj -f net48
 
       - name: Push demo/upgraded-sample
         shell: bash

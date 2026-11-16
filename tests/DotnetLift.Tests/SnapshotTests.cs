@@ -20,7 +20,7 @@ public class SnapshotTests
     public async Task Upgraded_sample_matches_the_expected_files()
     {
         var dir = Samples.CopyToTemp(Samples.LegacyShopDir);
-        var exit = await new App(new StringReader(""), new StringWriter(), interactive: false)
+        var exit = await new App(new StringReader(""), new StringWriter(), interactive: false, new FakeBuilder())
             .RunAsync(["upgrade", dir, "--yes", "--target", "net10.0"]);
         Assert.Equal(0, exit);
 
