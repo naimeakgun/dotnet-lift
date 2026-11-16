@@ -1,5 +1,6 @@
 using System.Reflection;
 using DotnetLift.Core;
+using DotnetLift.Core.Build;
 using DotnetLift.Core.Model;
 using DotnetLift.Core.Planning;
 using DotnetLift.Core.Reporting;
@@ -7,8 +8,9 @@ using DotnetLift.Core.Reporting;
 namespace DotnetLift.Cli;
 
 /// <summary>The CLI, with reader/writer injected so the interactive flow is testable.</summary>
-public sealed class App(TextReader input, TextWriter output, bool interactive)
+public sealed class App(TextReader input, TextWriter output, bool interactive, IBuilder? builder = null)
 {
+    private readonly IBuilder _builder = builder ?? new DotnetBuilder();
     private readonly TextWriter _out = output;
     private readonly Prompt _prompt = new(input, output, interactive);
 
@@ -95,7 +97,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive)
         _out.WriteLine($"Target: {target}");
         var plan = UpgradePlanner.Create(analysis);
         var settings = new UpgradeRunner.Settings(options.Yes, options.DryRun, options.AllowDirty);
-        return new UpgradeRunner(_prompt, _out).Run(analysis, plan, settings);
+        return new UpgradeRunner(_prompt, _out, _builder).Run(analysis, plan, settings);
     }
 
     private string AskTarget(Options options) =>
