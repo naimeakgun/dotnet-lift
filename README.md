@@ -6,7 +6,7 @@
 
 `dotnet-lift` reads an ASP.NET MVC / Web API solution and the class libraries it uses, tells you exactly what stands between it and .NET 10, and builds an ordered upgrade plan. It asks questions as it goes, and the upgrade runs step by step: approve each change, or let it run unattended. Every applied step is its own git commit.
 
-> Microsoft's .NET Upgrade Assistant is deprecated and its replacement needs a paid GitHub Copilot subscription. `dotnet-lift` is free, open source, runs from the command line on Windows, macOS and Linux, and does not depend on any one AI vendor.
+> Microsoft's .NET Upgrade Assistant is deprecated and its replacement needs a paid GitHub Copilot subscription. `dotnet-lift` is free, open source and runs from the command line on Windows, macOS and Linux. It needs nothing but the .NET SDK: no API key, no account, no network. Where AI can help, you bring the assistant you already use.
 
 ## Status
 

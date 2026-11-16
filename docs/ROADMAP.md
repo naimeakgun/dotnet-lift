@@ -7,13 +7,15 @@ The goal for the first week: take a typical .NET Framework 4.8 solution (an ASP.
 | 0.1 | `analyze`: load .sln/.csproj without MSBuild, detect project kinds, scan packages, references, Web.config and source code, build a dependency-ordered plan, write a Markdown report, ask questions interactively | ✅ |
 | 0.2 | `upgrade`: interactive step runner (yes / skip / diff / all / quit, `--yes`, `--dry-run`), one git commit per step, automatic packages.config → PackageReference and legacy → SDK-style conversion for class libraries | ✅ |
 | 0.3 | Retarget libraries (`net48;net10.0`), then a **build → read errors → fix** loop: known compiler/NuGet errors (CS0246, CS0234, CS1061, CS0619, NU1202…) fixed from a catalog, Roslyn-based rewrites for well-known API changes | ⏳ |
-| 0.4 | LLM agent for errors the catalog cannot fix: proposes a diff, you approve, rebuild; iteration limit, stops and reports when stuck; works with Anthropic and OpenAI-compatible APIs | ⏳ |
+| 0.4 | For errors the catalog cannot fix, two ways that need no API key: (1) `dotnet-lift fix --prompt` writes a ready-to-paste prompt per remaining error (error, code, suggested approach) for whatever AI assistant you already use; (2) an MCP server mode so Claude Code, Cursor or VS Code Copilot can drive analyze → upgrade → build with the user's own assistant doing the fixes | ⏳ |
 | 0.5 | Web project: ASP.NET Core project file, Program.cs from Global.asax/App_Start, appsettings.json from Web.config, static files to wwwroot | ⏳ |
 | 0.6 | Controllers and views: System.Web rewrites, ApiController → ControllerBase, child actions → View Components; tests and smoke tests after each step | ⏳ |
+| later | Optional built-in LLM agent (Anthropic / OpenAI-compatible / local Ollama) for fully unattended fixing. Strictly opt-in: without a key nothing is lost | 💭 |
 | 1.0 | End-to-end: the LegacyShop sample upgraded to .NET 10 by the tool and running, docs and demo | ⏳ |
 
 ## Design principles
 
+- **Works for everyone, with nothing but the .NET SDK.** No API key, account, paid service or network access is needed for any feature. AI help is always optional and always brought by the user.
 - **Deterministic first.** Anything that can be done with rules (project files, packages, config) is done without an LLM. The agent is only used for code that needs understanding.
 - **Every step is reviewable.** Each step is its own git commit, so it can be inspected or reverted.
 - **Never leave the solution unbuildable for long.** Libraries multi-target `net48;net10.0` until the web app has moved.
