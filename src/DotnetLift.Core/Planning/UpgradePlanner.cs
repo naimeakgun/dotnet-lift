@@ -27,14 +27,20 @@ public static class UpgradePlanner
             }
             else
             {
-                AddLibrarySteps(builder, project, analysis.TargetFramework, webProjectsStillOnFramework);
+                var hosts = order
+                    .Where(p => p.IsWeb && p.HasGlobalAsax && p.ProjectReferences.Any(r =>
+                        string.Equals(Path.GetFullPath(r), Path.GetFullPath(project.FullPath), StringComparison.OrdinalIgnoreCase)))
+                    .Select(p => Path.Combine(p.Directory, "Global.asax.cs"))
+                    .ToList();
+                AddLibrarySteps(builder, project, analysis.TargetFramework, webProjectsStillOnFramework, hosts);
             }
         }
 
         return new UpgradePlan { TargetFramework = analysis.TargetFramework, Order = order, Steps = steps };
     }
 
-    private static void AddLibrarySteps(StepBuilder b, ProjectInfo p, string target, bool consumedByFrameworkApp)
+    private static void AddLibrarySteps(StepBuilder b, ProjectInfo p, string target, bool consumedByFrameworkApp,
+        IReadOnlyList<string> hostStartupFiles)
     {
         if (p.HasPackagesConfig)
         {
@@ -96,6 +102,20 @@ public static class UpgradePlanner
             b.Add("api-rewrites", "Rewrite well-known APIs (Roslyn)",
                 "HttpRuntime.Cache becomes MemoryCache.Default (System.Runtime.Caching), which works on both .NET Framework and modern .NET. Only calls with an exact equivalent are rewritten; anything else is left for the build step to report.",
                 StepMode.Automatic, Risk.Low, f => f.Message.StartsWith("HttpRuntime.Cache"));
+        }
+
+        if (b.Has(f => f.Message.StartsWith("HttpContext.Current")))
+        {
+            var wiring = hostStartupFiles.Count > 0
+                ? $" {string.Join(", ", hostStartupFiles.Select(f => Path.GetFileName(f)).Distinct())} of the web app sets the provider, so behaviour stays the same."
+                : " The host application must call CurrentUser.Use(...) at startup.";
+            b.Add("current-user", "Replace HttpContext.Current.User with a CurrentUser provider",
+                "The library gets a small CurrentUser class and reads CurrentUser.Principal instead of HttpContext.Current.User; " +
+                "the System.Web reference goes away when nothing else needs it." + wiring +
+                " Files that use HttpContext.Current for anything else (Items, Request, Session) are left alone.",
+                StepMode.Automatic, Risk.Medium,
+                f => f.Message.StartsWith("HttpContext.Current") || (f.Category == "Dependency" && f.Message.Contains("System.Web")),
+                argument: string.Join(";", hostStartupFiles));
         }
 
         if (b.Has(IsBinaryFormatter))

@@ -33,6 +33,7 @@ public static class StepExecutors
         new SdkStyleConversion(),
         new Retarget(),
         new ApiRewrites(),
+        new CurrentUserProvider(),
         new BinaryFormatterToJson(),
     ];
 
