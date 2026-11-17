@@ -131,7 +131,7 @@ public class RewriteTests
         Assert.Equal("LegacyShop.Data", step.Project);
         var index = plan.Steps.ToList().IndexOf(step);
         Assert.Equal("retarget", plan.Steps[index - 1].Id);
-        Assert.Equal("build", plan.Steps[index + 1].Id);
+        Assert.Equal("current-user", plan.Steps[index + 1].Id);
     }
 }
 

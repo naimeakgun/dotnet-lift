@@ -28,19 +28,20 @@ public class UpgradeCommandTests
         var dir = RepoWithSample();
 
         // Core: packages yes, SDK-style: show diff then yes, retarget yes, BinaryFormatter no.
-        // Data: packages skip, SDK-style yes, retarget yes, API rewrites yes.
-        var (exit, output) = await Run("y\nd\ny\ny\nn\nn\ny\ny\ny\n", "upgrade", dir, "--target", "net10.0");
+        // Data: packages skip, SDK-style yes, retarget yes, API rewrites yes, CurrentUser provider yes.
+        var (exit, output) = await Run("y\nd\ny\ny\nn\nn\ny\ny\ny\ny\n", "upgrade", dir, "--target", "net10.0");
 
         Assert.Equal(0, exit);
         Assert.Contains("Apply this step?", output);
         Assert.Contains("--- LegacyShop.Core/LegacyShop.Core.csproj", output);
         Assert.Contains("Skipped.", output);
-        Assert.Contains("Applied 6, skipped 2", output);
+        Assert.Contains("Applied 7, skipped 2", output);
         Assert.Contains("[y]es / [N]o, skip", output); // the risky step defaults to no
         Assert.Contains("LegacyShop.Core builds for net10.0", output);
 
         var subjects = Git.LogSubjects(dir);
-        Assert.Equal(6, subjects.Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(7, subjects.Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Contains("dotnet-lift: Replace HttpContext.Current.User with a CurrentUser provider (LegacyShop.Data)", subjects);
         Assert.Contains("dotnet-lift: Rewrite well-known APIs (Roslyn) (LegacyShop.Data)", subjects);
         Assert.Contains("dotnet-lift: Retarget to net48;net10.0 (LegacyShop.Core)", subjects);
         Assert.Contains("dotnet-lift: Convert to SDK-style project (LegacyShop.Data)", subjects);
@@ -61,7 +62,7 @@ public class UpgradeCommandTests
 
         Assert.Equal(0, exit);
         Assert.DoesNotContain("Apply this step?", output);
-        Assert.Equal(7, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(8, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
         Assert.Contains("needs your explicit approval", output);
         Assert.Contains("BinaryFormatter", File.ReadAllText(Path.Combine(dir, "LegacyShop.Core", "Services", "SnapshotSerializer.cs")));
         Assert.True(IsSdkStyle(dir, "LegacyShop.Core"));
@@ -78,7 +79,7 @@ public class UpgradeCommandTests
 
         Assert.Equal(0, exit);
         Assert.Contains("Applied 0", output);
-        Assert.Equal(7, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(8, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
     }
 
     [Fact]
@@ -183,7 +184,7 @@ public class UpgradeCommandTests
         Assert.Equal(0, exit);
         Assert.Contains("serialized format", output); // the warning is still printed
         Assert.Contains("dotnet-lift: Replace BinaryFormatter with System.Text.Json (LegacyShop.Core)", Git.LogSubjects(dir));
-        Assert.Equal(8, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
+        Assert.Equal(9, Git.LogSubjects(dir).Count(s => s.StartsWith("dotnet-lift:")));
         var serializer = File.ReadAllText(Path.Combine(dir, "LegacyShop.Core", "Services", "SnapshotSerializer.cs"));
         Assert.Contains("JsonSerializer.Deserialize<T>(ms)", serializer);
     }
