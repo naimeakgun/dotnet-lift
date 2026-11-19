@@ -35,6 +35,7 @@ public static class StepExecutors
         new ApiRewrites(),
         new CurrentUserProvider(),
         new BinaryFormatterToJson(),
+        new WebConfigToAppSettings(),
     ];
 
     public static IStepExecutor? For(UpgradeStep step, ProjectInfo project) =>

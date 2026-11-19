@@ -12,6 +12,9 @@ public sealed class WebConfigAnalyzer : IAnalyzer
         "webpages:Version", "webpages:Enabled", "ClientValidationEnabled", "UnobtrusiveJavaScriptEnabled",
     };
 
+    /// <summary>True for appSettings keys the MVC 5 template adds, which mean nothing to ASP.NET Core.</summary>
+    public static bool IsFrameworkAppSetting(string key) => FrameworkAppSettings.Contains(key);
+
     public string Name => "web-config";
 
     public IEnumerable<Finding> Analyze(ProjectInfo project, AnalysisContext context)
