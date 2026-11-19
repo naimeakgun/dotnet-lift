@@ -160,7 +160,9 @@ public static class UpgradePlanner
         if (p.WebConfigPath is not null)
         {
             b.Add("appsettings", "Move Web.config settings to appsettings.json",
-                "Copy appSettings and connection strings into appsettings.json, drop binding redirects and framework-only keys.",
+                "Copy appSettings and connection strings into appsettings.json, where IConfiguration reads them under the same keys " +
+                "(a ':' in a key becomes a section, provider names are kept as <name>_ProviderName). Framework-only keys and binding redirects are dropped. " +
+                "Web.config stays as it is, so the old app keeps working; an existing appsettings.json keeps its values.",
                 StepMode.Automatic, Risk.Low,
                 f => f.File == Path.GetFileName(p.WebConfigPath) && f.Category is "Configuration" or "Entity Framework");
         }
