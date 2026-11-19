@@ -32,7 +32,14 @@ public static class UpgradePlanner
                         string.Equals(Path.GetFullPath(r), Path.GetFullPath(project.FullPath), StringComparison.OrdinalIgnoreCase)))
                     .Select(p => Path.Combine(p.Directory, "Global.asax.cs"))
                     .ToList();
-                AddLibrarySteps(builder, project, analysis.TargetFramework, webProjectsStillOnFramework, hosts);
+
+                // .NET Framework projects that use packages.config do not get a library's NuGet packages automatically.
+                var packagesConfigConsumers = order
+                    .Where(p => p != project && p.HasPackagesConfig && p.ProjectReferences.Any(r =>
+                        string.Equals(Path.GetFullPath(r), Path.GetFullPath(project.FullPath), StringComparison.OrdinalIgnoreCase)))
+                    .Select(p => p.Name)
+                    .ToList();
+                AddLibrarySteps(builder, project, analysis.TargetFramework, webProjectsStillOnFramework, hosts, packagesConfigConsumers);
             }
         }
 
@@ -40,7 +47,7 @@ public static class UpgradePlanner
     }
 
     private static void AddLibrarySteps(StepBuilder b, ProjectInfo p, string target, bool consumedByFrameworkApp,
-        IReadOnlyList<string> hostStartupFiles)
+        IReadOnlyList<string> hostStartupFiles, IReadOnlyList<string> packagesConfigConsumers)
     {
         if (p.HasPackagesConfig)
         {
@@ -120,8 +127,13 @@ public static class UpgradePlanner
 
         if (b.Has(IsBinaryFormatter))
         {
+            var consumerNote = packagesConfigConsumers.Count == 0
+                ? ""
+                : $" Note: {string.Join(", ", packagesConfigConsumers)} still use{(packagesConfigConsumers.Count == 1 ? "s" : "")} packages.config, " +
+                  "which does not pick up the library's packages: add System.Text.Json there too " +
+                  $"(Install-Package System.Text.Json -Version {BinaryFormatterToJson.SystemTextJsonVersion}), otherwise the app fails at runtime with FileNotFoundException.";
             b.Add("binaryformatter-json", "Replace BinaryFormatter with System.Text.Json",
-                "new BinaryFormatter().Serialize(stream, value) and (T)new BinaryFormatter().Deserialize(stream) become System.Text.Json calls, which build for both targets. The serialized format changes, so this step only runs after your explicit approval.",
+                "new BinaryFormatter().Serialize(stream, value) and (T)new BinaryFormatter().Deserialize(stream) become System.Text.Json calls, which build for both targets. The serialized format changes, so this step only runs after your explicit approval." + consumerNote,
                 StepMode.Automatic, Risk.High, IsBinaryFormatter);
         }
 

@@ -231,4 +231,16 @@ public class BinaryFormatterRewriteTests
         Assert.Equal("build", plan.Steps[plan.Steps.ToList().IndexOf(step) + 1].Id);
         Assert.DoesNotContain(plan.Steps, s => s.Project == "LegacyShop.Core" && s.Id == "removed-apis");
     }
+
+    [Fact]
+    public void BinaryFormatter_step_warns_about_packages_config_consumers()
+    {
+        var plan = UpgradePlanner.Create(new DotnetLift.Core.SolutionAnalyzer().Analyze(Samples.LegacyShopSln));
+
+        var step = plan.Steps.Single(s => s.Id == "binaryformatter-json");
+
+        // The legacy web app references Core and still uses packages.config.
+        Assert.Contains("LegacyShop.Web still uses packages.config", step.Description);
+        Assert.Contains("Install-Package System.Text.Json -Version 10.0.0", step.Description);
+    }
 }
