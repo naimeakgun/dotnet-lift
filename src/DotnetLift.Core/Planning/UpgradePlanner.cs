@@ -33,9 +33,10 @@ public static class UpgradePlanner
                     .Select(p => Path.Combine(p.Directory, "Global.asax.cs"))
                     .ToList();
 
-                // .NET Framework projects that use packages.config do not get a library's NuGet packages automatically.
+                // Applications that stay on packages.config do not get a library's NuGet packages automatically.
+                // (Libraries are converted to PackageReference by this tool, so they are not listed.)
                 var packagesConfigConsumers = order
-                    .Where(p => p != project && p.HasPackagesConfig && p.ProjectReferences.Any(r =>
+                    .Where(p => p != project && (p.IsWeb || p.Kind == ProjectKind.Console) && p.HasPackagesConfig && p.ProjectReferences.Any(r =>
                         string.Equals(Path.GetFullPath(r), Path.GetFullPath(project.FullPath), StringComparison.OrdinalIgnoreCase)))
                     .Select(p => p.Name)
                     .ToList();
