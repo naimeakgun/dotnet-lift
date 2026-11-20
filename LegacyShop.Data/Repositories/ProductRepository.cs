@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web;
-using System.Web.Caching;
+using System.Runtime.Caching;
 using LegacyShop.Core.Models;
 
 namespace LegacyShop.Data.Repositories
@@ -13,7 +13,7 @@ namespace LegacyShop.Data.Repositories
 
         public IList<Product> GetAll()
         {
-            var cached = HttpRuntime.Cache[AllProductsKey] as IList<Product>;
+            var cached = MemoryCache.Default[AllProductsKey] as IList<Product>;
             if (cached != null)
             {
                 return cached;
@@ -22,8 +22,7 @@ namespace LegacyShop.Data.Repositories
             using (var db = new ShopDbContext())
             {
                 var products = db.Products.OrderBy(p => p.Name).ToList();
-                HttpRuntime.Cache.Insert(AllProductsKey, products, null,
-                    DateTime.UtcNow.AddMinutes(5), Cache.NoSlidingExpiration);
+                MemoryCache.Default.Set(AllProductsKey, products, DateTime.UtcNow.AddMinutes(5));
                 return products;
             }
         }
