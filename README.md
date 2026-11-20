@@ -188,6 +188,16 @@ $ dotnet-lift cpm path/to/Solution.sln             # write Directory.Packages.pr
 
 Every `PackageReference` version moves into one `Directory.Packages.props` next to the solution; project files keep only `Include`. Nothing changes at build time: when projects used different versions of a package, the most common one becomes the central version and the others keep theirs with `VersionOverride` (listed, so aligning them is a conscious decision). Projects still on packages.config are not affected, and legacy project files that use `PackageReference` have to be converted to SDK-style first. Once CPM is on, every later `dotnet-lift upgrade` step that adds a package writes the version to `Directory.Packages.props` instead of the project file.
 
+### DLL references → packages
+
+```console
+$ dotnet-lift refs --init-map    # writes dotnet-lift.packages.json: every DLL referenced by HintPath, with a guessed package
+$ dotnet-lift refs --dry-run     # after checking the map against your feed
+$ dotnet-lift refs               # one commit
+```
+
+DLLs referenced by file path outside `packages/` (a `SolutionItems` or `lib` folder) become `PackageReference`s. `dotnet-lift.packages.json` says which package each assembly comes from (`"Acme.Logging": "Acme.Logging@2.3.0"`, `"Acme.Core": "Acme.Core"` to take the version from the reference, or `"keep"` for a DLL that has no package); `--by-name` assumes package id = assembly name for the rest. A reference inside a conditional item group keeps its condition, versions go to `Directory.Packages.props` when CPM is on, and projects still on packages.config are left for later. The DLL files are never deleted; the tool lists the ones nothing references any more. `analyze` reports these references, and package versions fixed at `1.0.0` in a project file or `.nuspec`.
+
 ## Try it
 
 Requires the .NET 10 SDK.
