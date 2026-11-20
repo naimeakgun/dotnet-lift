@@ -33,6 +33,7 @@
     <Compile Include="Services\PriceCalculator.cs" />
     <Compile Include="Services\AppSettings.cs" />
     <Compile Include="Services\SnapshotSerializer.cs" />
+    <Compile Include="Services\PasswordHasher.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
