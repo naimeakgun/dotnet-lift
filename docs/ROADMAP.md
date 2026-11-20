@@ -2,6 +2,24 @@
 
 The goal for the first week: take a typical .NET Framework 4.8 solution (an ASP.NET MVC / Web API app plus the class libraries it uses) and move it to .NET 10 step by step, with the user approving each change or letting the tool run unattended.
 
+## Next up, in priority order
+
+Driven by a real migration: several .NET Framework 4.8 repositories, shared libraries published to a private NuGet feed, apps that consume them, and data (password hashes, serialized objects) that must stay byte-for-byte compatible. Work goes top to bottom; the web project items (0.5.3 onwards) wait behind P1–P7.
+
+| # | Item | Why it comes here |
+|---|---|---|
+| P1 | **Data-compatibility analysis.** Findings, with what to verify, for code whose output silently changes between .NET Framework and modern .NET: `Encoding.Default` / `GetEncoding(0)` (the ANSI code page on .NET Framework, always UTF-8 on modern .NET), code-page encodings used without registering `CodePagesEncodingProvider`, `Encoding.UTF8.GetString` over binary data such as hashes (ill-formed UTF-8 is replaced differently since .NET Core 3.0), culture-sensitive `ToLower()`/`ToUpper()` (Turkish İ/ı), `GetHashCode()` results that are stored or sent, and compressed output compared byte for byte | Hashes and stored data that change without an error are the most expensive migration bug; this has to be known before any code moves |
+| P2 | **Central Package Management.** Generate `Directory.Packages.props` from every `PackageReference`, report version conflicts, remove the `Version` attributes, set `ManagePackageVersionsCentrally` | Wanted in every repository before the move, and it makes P3 easier |
+| P3 | **File references → packages.** `HintPath` DLLs outside `packages/` (for example a `SolutionItems` folder) become `PackageReference`s, mapped by a small mapping file or by assembly name; hard-coded package versions (such as a fixed `1.0.0`) are reported | Shared libraries must come from the feed, not from copied DLLs |
+| P4 | **Cleanup steps.** Remove references nothing uses (checked with Roslyn: e.g. leftover System.Web.Mvc, System.Web.Optimization, Owin, System.EnterpriseServices, Unity); remove a project from the solution after listing what depends on it; remove `MigrationBackup` folders left by Visual Studio | Everything removed is something that does not have to be migrated |
+| P5 | **Test projects.** Recognise MSTest / xUnit / NUnit projects, convert them to SDK-style with the right test packages, and run `dotnet test` after the build loop | Tests have to survive the upgrade and prove it |
+| P6 | **Security findings.** Exception messages returned to clients (`ex.Message` in a response), secrets in config files | Cheap to find, and migration reviews look for them anyway |
+| P7 | **Binary dependency inventory.** Referenced DLLs that target only .NET Framework (read from the assembly itself), as a list of vendor SDKs to request | Vendors take a long time to answer |
+| P8 | **Web project, keeping JSON identical.** When the web project moves, keep Newtonsoft.Json with Web API 2 behaviour (PascalCase names, same date handling) so JavaScript clients keep working; then 0.5.3 → 0.6 below | JavaScript clients break on camelCase property names |
+| later | 0.4 (prompt export for any AI assistant, MCP server mode) | Useful once the rule-based steps above are in place |
+
+## Versions
+
 | Version | What | Status |
 |---|---|---|
 | 0.1 | `analyze`: load .sln/.csproj without MSBuild, detect project kinds, scan packages, references, Web.config and source code, build a dependency-ordered plan, write a Markdown report, ask questions interactively | ✅ |
