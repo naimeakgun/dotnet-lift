@@ -189,7 +189,10 @@ public static class UpgradePlanner
         }
 
         b.Add("static-files", "Move static files to wwwroot",
-            "Content/ and Scripts/ move to wwwroot; client libraries come from LibMan or npm instead of NuGet content packages.",
+            "Content/, Scripts/, fonts/, Images/, img/, favicon.ico and robots.txt move into wwwroot/ with their folders, so every URL stays the same " +
+            "(UseStaticFiles serves wwwroot/Content/site.css as /Content/site.css) and views need no change. Files are moved, not rewritten; " +
+            "files that already exist in wwwroot stay where they are. Runs once the project is an ASP.NET Core project, because the old app serves them from their current folders. " +
+            "Client libraries from NuGet content packages (jQuery, Bootstrap) can later come from LibMan or npm.",
             StepMode.Automatic, Risk.Low, f => f.Message.Contains("content package"));
 
         if (b.Has(f => f.Category is "Removed API" or "Obsolete API"))
