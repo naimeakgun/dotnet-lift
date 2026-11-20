@@ -56,7 +56,48 @@ public static class ProjectLoader
             if (!string.IsNullOrWhiteSpace(include))
             {
                 // "System.Web.Mvc, Version=5.2.9.0, Culture=..." -> "System.Web.Mvc"
-                project.AssemblyReferences.Add(include.Split(',')[0].Trim());
+                var name = include.Split(',')[0].Trim();
+                project.AssemblyReferences.Add(name);
+
+                var hintPath = ChildValue(r, "HintPath");
+                if (hintPath is not null && !IsPackagesFolder(hintPath))
+                {
+                    project.FileReferences.Add(new FileReference(name, AssemblyVersion(include), hintPath, PathUtil.Combine(dir, hintPath)));
+                }
+            }
+        }
+
+        foreach (var name in new[] { "PackageVersion", "Version" })
+        {
+            // Properties only (PackageReference has a <Version> child too).
+            var value = root.Elements().Where(e => e.Name.LocalName == "PropertyGroup")
+                .SelectMany(g => g.Elements()).Where(e => e.Name.LocalName == name)
+                .Select(e => e.Value.Trim()).FirstOrDefault(v => v.Length > 0);
+            if (value is not null)
+            {
+                project.DeclaredVersion = value;
+                project.DeclaredVersionSource = $"<{name}> in {Path.GetFileName(fullPath)}";
+                break;
+            }
+        }
+        if (project.DeclaredVersion is null)
+        {
+            foreach (var nuspec in Directory.EnumerateFiles(dir, "*.nuspec"))
+            {
+                try
+                {
+                    var version = XDocument.Load(nuspec).Descendants().FirstOrDefault(e => e.Name.LocalName == "version")?.Value.Trim();
+                    if (!string.IsNullOrEmpty(version))
+                    {
+                        project.DeclaredVersion = version;
+                        project.DeclaredVersionSource = Path.GetFileName(nuspec);
+                        break;
+                    }
+                }
+                catch (System.Xml.XmlException)
+                {
+                    // A broken .nuspec is not this loader's problem.
+                }
             }
         }
 
@@ -135,6 +176,21 @@ public static class ProjectLoader
             || string.Equals(p.OutputType, "WinExe", StringComparison.OrdinalIgnoreCase)
             ? ProjectKind.Console
             : ProjectKind.ClassLibrary;
+    }
+
+    internal static bool IsPackagesFolder(string path)
+    {
+        var p = path.Replace('/', '\\');
+        return p.StartsWith("packages\\", StringComparison.OrdinalIgnoreCase)
+            || p.Contains("\\packages\\", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>"Acme.Logging, Version=2.3.0.0, Culture=neutral" → "2.3.0.0".</summary>
+    internal static string? AssemblyVersion(string include)
+    {
+        var part = include.Split(',').Skip(1).Select(p => p.Trim())
+            .FirstOrDefault(p => p.StartsWith("Version=", StringComparison.OrdinalIgnoreCase));
+        return part is null ? null : part.Substring("Version=".Length).Trim();
     }
 
     private static string? FindFile(string dir, string name) =>

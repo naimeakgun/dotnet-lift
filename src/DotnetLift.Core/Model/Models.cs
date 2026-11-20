@@ -21,6 +21,9 @@ public enum Severity
 /// <summary>A NuGet package entry from packages.config or a PackageReference.</summary>
 public sealed record PackageRef(string Id, string Version);
 
+/// <summary>A DLL referenced by file path (HintPath) outside a NuGet packages folder.</summary>
+public sealed record FileReference(string AssemblyName, string? AssemblyVersion, string HintPath, string FullPath);
+
 /// <summary>A single thing the upgrade has to deal with.</summary>
 public sealed record Finding(
     string Project,
@@ -45,6 +48,11 @@ public sealed class ProjectInfo
     public List<string> ProjectReferences { get; } = [];
     public List<string> AssemblyReferences { get; } = [];
     public List<PackageRef> Packages { get; } = [];
+    public List<FileReference> FileReferences { get; } = [];
+
+    /// <summary>The package/assembly version the project declares itself (Version or PackageVersion property, or a .nuspec), if any.</summary>
+    public string? DeclaredVersion { get; set; }
+    public string? DeclaredVersionSource { get; set; }
 
     public bool HasPackagesConfig { get; init; }
     public string? WebConfigPath { get; init; }

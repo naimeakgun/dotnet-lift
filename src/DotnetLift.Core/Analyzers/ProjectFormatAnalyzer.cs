@@ -31,6 +31,24 @@ public sealed class ProjectFormatAnalyzer : IAnalyzer
                 File: "packages.config");
         }
 
+        if (project.FileReferences.Count > 0)
+        {
+            var names = string.Join(", ", project.FileReferences.Select(r => r.AssemblyName).Distinct(StringComparer.OrdinalIgnoreCase));
+            yield return new Finding(project.Name, Severity.Warning, "Packages",
+                $"{project.FileReferences.Count} DLL reference(s) by file path outside packages/: {names}.",
+                "Reference them as NuGet packages from your feed: `dotnet-lift refs` converts them " +
+                "(assembly → package in dotnet-lift.packages.json, or --by-name).",
+                File: Path.GetFileName(project.FullPath));
+        }
+
+        if (project.DeclaredVersion is "1.0.0" or "1.0.0.0" or "1.0")
+        {
+            yield return new Finding(project.Name, Severity.Warning, "Packaging",
+                $"Version fixed at {project.DeclaredVersion} ({project.DeclaredVersionSource}): every build produces a package with the same version.",
+                "Let the build set the version (for example GitVersion, or `dotnet pack -p:Version=...`) and remove the fixed value.",
+                File: project.DeclaredVersionSource?.EndsWith(".nuspec") == true ? project.DeclaredVersionSource : Path.GetFileName(project.FullPath));
+        }
+
         if (project.AppConfigPath is not null && !project.IsWeb)
         {
             yield return new Finding(project.Name, Severity.Info, "Configuration",
