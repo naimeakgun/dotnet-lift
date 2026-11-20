@@ -11,6 +11,9 @@ public sealed class Options
     public bool DryRun { get; private set; }
     public bool AllowDirty { get; private set; }
     public bool AcceptRisky { get; private set; }
+    public string? Map { get; private set; }
+    public bool InitMap { get; private set; }
+    public bool ByName { get; private set; }
 
     public static readonly string[] SupportedTargets = ["net10.0", "net11.0"];
 
@@ -51,6 +54,15 @@ public sealed class Options
                     break;
                 case "--accept-risky":
                     o.AcceptRisky = true;
+                    break;
+                case "--map":
+                    o.Map = Next(args, ref i, a);
+                    break;
+                case "--init-map":
+                    o.InitMap = true;
+                    break;
+                case "--by-name":
+                    o.ByName = true;
                     break;
                 default:
                     if (a.StartsWith('-'))
