@@ -23,6 +23,7 @@ public sealed class SolutionAnalyzer
         new AssemblyReferenceAnalyzer(),
         new WebConfigAnalyzer(),
         new SourceApiAnalyzer(),
+        new DataCompatibilityAnalyzer(),
     ];
 
     public AnalysisResult Analyze(string inputPath, string targetFramework = DefaultTarget) =>
