@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace DotnetLift.Core.Upgrade;
 
@@ -33,13 +34,31 @@ public sealed class GitRepository
         return status.Length == 0;
     }
 
-    /// <summary>Stages exactly the given paths (including deletions) and commits them.</summary>
-    public void Commit(IEnumerable<string> paths, string message)
+    /// <summary>
+    /// Stages exactly the given paths (including deletions and both ends of a move) and commits them.
+    /// Paths git cannot stage are left out: ignored files, and files that never were in git and are gone now
+    /// (for example an ignored file a step moved). Returns false when nothing was left to commit.
+    /// </summary>
+    public bool Commit(IEnumerable<string> paths, string message)
     {
-        var relative = paths.Select(p => Path.GetRelativePath(Root, p)).ToArray();
-        Check(Run(Root, ["add", "-A", "--", .. relative]), "git add");
+        var relative = paths.Select(p => ToGitPath(Path.GetRelativePath(Root, p))).Distinct().ToArray();
+
+        // Tracked files (changed or deleted) and new files that are not ignored; -z keeps names unquoted.
+        var listed = Run(Root, ["--literal-pathspecs", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", .. relative]);
+        Check(listed, "git ls-files");
+        var stageable = listed.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries).Distinct().ToArray();
+        if (stageable.Length == 0)
+        {
+            return false;
+        }
+
+        Check(Run(Root, ["--literal-pathspecs", "add", "-A", "--", .. stageable]), "git add");
         Check(Run(Root, "commit", "-q", "-m", message), "git commit");
+        return true;
     }
+
+    private static string ToGitPath(string relative) =>
+        Path.DirectorySeparatorChar == '\\' ? relative.Replace('\\', '/') : relative;
 
     private static void Check((int Code, string Output, string Error) result, string what)
     {
@@ -57,6 +76,9 @@ public sealed class GitRepository
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            // git writes paths as UTF-8; the console code page on Windows would garble non-ASCII names.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var a in args)
         {
