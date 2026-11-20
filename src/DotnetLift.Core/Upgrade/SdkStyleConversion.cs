@@ -32,7 +32,9 @@ public sealed class SdkStyleConversion : IStepExecutor
             return [];
         }
 
-        var changes = new List<FileChange> { new(current.FullPath, Convert(current)) };
+        // With Central Package Management the versions belong in Directory.Packages.props, not in the project file.
+        var central = CentralPackageFile.Find(current.Directory);
+        var changes = new List<FileChange> { new(current.FullPath, Convert(current, central)) };
 
         var packagesConfig = Path.Combine(current.Directory, "packages.config");
         if (File.Exists(packagesConfig))
@@ -40,10 +42,11 @@ public sealed class SdkStyleConversion : IStepExecutor
             changes.Add(new FileChange(packagesConfig, null)); // its packages were carried into the new project file
         }
 
+        PackageReferences.AddIfChanged(changes, central);
         return changes;
     }
 
-    internal static string Convert(ProjectInfo project)
+    internal static string Convert(ProjectInfo project, CentralPackageFile? central = null)
     {
         var root = XDocument.Load(project.FullPath).Root!;
         var dir = project.Directory;
@@ -120,7 +123,7 @@ public sealed class SdkStyleConversion : IStepExecutor
             .GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(p => $"<PackageReference Include=\"{Escape(p.Id)}\" Version=\"{Escape(p.Version)}\" />");
+            .Select(p => PackageReferences.CreateText(p.Id, p.Version, central));
         Group(sb, packages);
 
         Group(sb, ProjectXml.Elements(root, "ProjectReference")

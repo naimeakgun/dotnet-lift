@@ -54,11 +54,11 @@ public sealed class BinaryFormatterToJson : IStepExecutor
             {
                 var doc = ProjectXml.Load(current.FullPath);
                 var root = doc.Root!;
+                var central = CentralPackageFile.Find(current.Directory);
                 ProjectXml.AddItem(root, targets.Length > 1 ? framework : null,
-                    new XElement(root.Name.Namespace + "PackageReference",
-                        new XAttribute("Include", "System.Text.Json"),
-                        new XAttribute("Version", SystemTextJsonVersion)));
+                    PackageReferences.Create(root.Name.Namespace, "System.Text.Json", SystemTextJsonVersion, central));
                 changes.Add(new FileChange(current.FullPath, ProjectXml.Serialize(doc)));
+                PackageReferences.AddIfChanged(changes, central);
             }
         }
 

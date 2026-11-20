@@ -62,7 +62,10 @@ public static class BuildFixCatalog
         }
 
         var multiTarget = project.TargetFramework?.Contains(';') == true;
-        var content = AddPackages(project.FullPath, needed.Select(n => n.Rule).ToList(), multiTarget ? targetFramework : null);
+        var central = CentralPackageFile.Find(project.Directory);
+        var content = AddPackages(project.FullPath, needed.Select(n => n.Rule).ToList(), multiTarget ? targetFramework : null, central);
+        var changes = new List<FileChange> { new(project.FullPath, content) };
+        PackageReferences.AddIfChanged(changes, central);
         var names = string.Join(", ", needed.Select(n => $"{n.Rule.PackageId} {n.Rule.Version}"));
 
         return
@@ -70,18 +73,17 @@ public static class BuildFixCatalog
             new BuildFix(
                 $"Add package{(needed.Count > 1 ? "s" : "")} {names}{(multiTarget ? $" for {targetFramework}" : "")}",
                 string.Join(" ", needed.Select(n => n.Rule.Why)),
-                [new FileChange(project.FullPath, content)],
+                changes,
                 needed.SelectMany(n => n.Errors).ToList()),
         ];
     }
 
-    private static string AddPackages(string projectPath, IReadOnlyList<PackageRule> rules, string? conditionTfm)
+    private static string AddPackages(string projectPath, IReadOnlyList<PackageRule> rules, string? conditionTfm, CentralPackageFile? central)
     {
         var doc = ProjectXml.Load(projectPath);
         var root = doc.Root!;
         var ns = root.Name.Namespace;
-        var items = rules.Select(r => new XElement(ns + "PackageReference",
-            new XAttribute("Include", r.PackageId), new XAttribute("Version", r.Version))).ToList();
+        var items = rules.Select(r => PackageReferences.Create(ns, r.PackageId, r.Version, central)).ToList();
 
         var condition = conditionTfm is null ? null : ProjectXml.TargetFrameworkCondition(conditionTfm);
         var group = ProjectXml.Elements(root, "ItemGroup").FirstOrDefault(g =>

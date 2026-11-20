@@ -40,11 +40,13 @@ public sealed class ApiRewrites : IStepExecutor
 
         if (changes.Count > 0)
         {
-            var csproj = AddRuntimeCaching(current);
+            var central = CentralPackageFile.Find(current.Directory);
+            var csproj = AddRuntimeCaching(current, central);
             if (csproj is not null)
             {
                 changes.Add(new FileChange(current.FullPath, csproj));
             }
+            PackageReferences.AddIfChanged(changes, central);
         }
 
         return changes;
@@ -54,7 +56,7 @@ public sealed class ApiRewrites : IStepExecutor
     /// System.Runtime.Caching is a framework assembly on .NET Framework and a NuGet package on modern .NET:
     /// add each where it belongs. Returns null when the project already has both.
     /// </summary>
-    internal static string? AddRuntimeCaching(ProjectInfo project)
+    internal static string? AddRuntimeCaching(ProjectInfo project, CentralPackageFile? central = null)
     {
         var doc = ProjectXml.Load(project.FullPath);
         var root = doc.Root!;
@@ -76,9 +78,7 @@ public sealed class ApiRewrites : IStepExecutor
         if (modern is not null && !project.HasPackage("System.Runtime.Caching"))
         {
             ProjectXml.AddItem(root, multi ? modern : null,
-                new XElement(ns + "PackageReference",
-                    new XAttribute("Include", "System.Runtime.Caching"),
-                    new XAttribute("Version", RuntimeCachingPackageVersion)));
+                PackageReferences.Create(ns, "System.Runtime.Caching", RuntimeCachingPackageVersion, central));
             changed = true;
         }
 
