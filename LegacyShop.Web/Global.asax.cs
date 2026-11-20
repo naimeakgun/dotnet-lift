@@ -16,6 +16,8 @@ namespace LegacyShop.Web
             FilterConfig.RegisterGlobalFilters(GlobalFilters.Filters);
             RouteConfig.RegisterRoutes(RouteTable.Routes);
             BundleConfig.RegisterBundles(BundleTable.Bundles);
+            // dotnet-lift: libraries read the signed-in user through CurrentUser instead of HttpContext.
+            LegacyShop.Data.Infrastructure.CurrentUser.Use(() => HttpContext.Current?.User);
         }
 
         protected void Application_Error(object sender, EventArgs e)

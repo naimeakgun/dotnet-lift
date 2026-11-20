@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
+using LegacyShop.Data.Infrastructure;
 using System.Runtime.Caching;
 using LegacyShop.Core.Models;
 
@@ -38,8 +38,8 @@ namespace LegacyShop.Data.Repositories
         public string CurrentUserName()
         {
             // A data layer reaching into the web request: very common in legacy code.
-            return HttpContext.Current != null && HttpContext.Current.User != null
-                ? HttpContext.Current.User.Identity.Name
+            return CurrentUser.Principal != null
+                ? CurrentUser.Principal.Identity.Name
                 : "anonymous";
         }
     }
