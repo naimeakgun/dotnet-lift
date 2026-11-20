@@ -23,6 +23,12 @@ public interface IStepExecutor
 
     /// <summary>Shown before asking, when <see cref="RequiresExplicitApproval"/> is true.</summary>
     string? ApprovalNote => null;
+
+    /// <summary>
+    /// Why the step cannot run yet because an earlier step has not been applied (null when it can).
+    /// The runner skips the step with this reason instead of preparing changes.
+    /// </summary>
+    string? NotReadyReason(ProjectInfo project) => null;
 }
 
 public static class StepExecutors
@@ -36,6 +42,7 @@ public static class StepExecutors
         new CurrentUserProvider(),
         new BinaryFormatterToJson(),
         new WebConfigToAppSettings(),
+        new StaticFilesToWwwroot(),
     ];
 
     public static IStepExecutor? For(UpgradeStep step, ProjectInfo project) =>

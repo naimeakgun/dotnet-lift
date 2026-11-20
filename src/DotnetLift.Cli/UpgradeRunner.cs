@@ -11,7 +11,7 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
 {
     public sealed record Settings(bool Yes, bool DryRun, bool AllowDirty, bool AcceptRisky = false);
 
-    public sealed record Summary(int Applied, int Skipped, int NotAutomated, int NothingToDo, bool Quit,
+    public sealed record Summary(int Applied, int Skipped, int NotAutomated, int NothingToDo, int Waiting, bool Quit,
         List<string> BuildsOk, List<string> BuildsWithErrors);
 
     public int Run(AnalysisResult analysis, UpgradePlan plan, Settings settings)
@@ -26,7 +26,8 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
             return 1;
         }
 
-        var automatable = plan.Steps.Count(s => IsBuildLoop(s, ProjectOf(analysis, s)) || StepExecutors.For(s, ProjectOf(analysis, s)) is not null);
+        var automatable = plan.Steps.Count(s => IsBuildLoop(s, ProjectOf(analysis, s))
+            || StepExecutors.For(s, ProjectOf(analysis, s)) is { } e && e.NotReadyReason(ProjectOf(analysis, s)) is null);
         output.WriteLine($"{plan.Steps.Count} step(s), {automatable} can be done automatically right now.");
         if (settings.DryRun)
         {
@@ -39,7 +40,8 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
         output.WriteLine();
         output.WriteLine(summary.Quit ? "Stopped." : "Done.");
         output.WriteLine($"Applied {summary.Applied}, skipped {summary.Skipped}, nothing to change {summary.NothingToDo}, " +
-                         $"not automated yet {summary.NotAutomated}.");
+                         $"not automated yet {summary.NotAutomated}" +
+                         (summary.Waiting > 0 ? $", waiting for an earlier step {summary.Waiting}." : "."));
         if (summary.BuildsOk.Count + summary.BuildsWithErrors.Count > 0)
         {
             output.WriteLine($"Builds for {plan.TargetFramework}: " +
@@ -56,11 +58,11 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
 
     private Summary Walk(AnalysisResult analysis, UpgradePlan plan, Settings settings, string root, GitRepository? git)
     {
-        int applied = 0, skipped = 0, notAutomated = 0, nothing = 0;
+        int applied = 0, skipped = 0, notAutomated = 0, nothing = 0, waiting = 0;
         var applyAll = settings.Yes;
         var buildsOk = new List<string>();
         var buildsWithErrors = new List<string>();
-        Summary Done(bool quit) => new(applied, skipped, notAutomated, nothing, quit, buildsOk, buildsWithErrors);
+        Summary Done(bool quit) => new(applied, skipped, notAutomated, nothing, waiting, quit, buildsOk, buildsWithErrors);
 
         foreach (var step in plan.Steps)
         {
@@ -136,6 +138,13 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
             {
                 output.WriteLine("  → Not automated yet; it stays in the report as a to-do.");
                 notAutomated++;
+                continue;
+            }
+
+            if (executor.NotReadyReason(project) is { } reason)
+            {
+                output.WriteLine($"  → Not yet: {reason}");
+                waiting++;
                 continue;
             }
 
@@ -216,8 +225,9 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
     {
         if (git is not null)
         {
-            git.Commit(changes.Select(c => c.Path), message);
-            output.WriteLine("  ✓ Applied and committed.");
+            output.WriteLine(git.Commit(changes.SelectMany(c => c.Paths), message)
+                ? "  ✓ Applied and committed."
+                : "  ✓ Applied (not committed: git ignores every file this step touched).");
         }
         else
         {
@@ -321,10 +331,24 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
 
     private void PrintChanges(IReadOnlyList<FileChange> changes, string root)
     {
+        const int maxMovesListed = 10;
+        var moves = changes.Count(c => c.IsMove);
+        var movesListed = 0;
         foreach (var change in changes)
         {
             var name = Path.GetRelativePath(root, change.Path).Replace('\\', '/');
-            if (change.IsDelete)
+            if (change.MovedFrom is { } source)
+            {
+                if (++movesListed <= maxMovesListed)
+                {
+                    output.WriteLine($"    > {Path.GetRelativePath(root, source).Replace('\\', '/')} → {name} (move)");
+                }
+                else if (movesListed == maxMovesListed + 1)
+                {
+                    output.WriteLine($"    > ... and {moves - maxMovesListed} more file(s) moved (d shows all)");
+                }
+            }
+            else if (change.IsDelete)
             {
                 output.WriteLine($"    - {name} (delete)");
             }
@@ -345,6 +369,12 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
         foreach (var change in changes)
         {
             var name = Path.GetRelativePath(root, change.Path).Replace('\\', '/');
+            if (change.MovedFrom is { } source)
+            {
+                // Content is unchanged (and may be binary), so a move shows as a rename, like git does.
+                output.WriteLine($"rename {Path.GetRelativePath(root, source).Replace('\\', '/')} → {name}");
+                continue;
+            }
             output.WriteLine();
             output.Write(LineDiff.Unified(change.ReadOriginal(), change.NewContent, name));
         }

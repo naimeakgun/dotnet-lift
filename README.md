@@ -118,7 +118,11 @@ $ dotnet-lift upgrade samples/LegacyShop --target net10.0
   ✓ Applied and committed.
 ...
 
-Applied 11, skipped 0, nothing to change 0, not automated yet 10.
+[21/22] LegacyShop.Web · Move static files to wwwroot  (automatic, low risk)
+  → Not yet: the project is still an ASP.NET (.NET Framework) project, which serves these files from their current folders. This step runs after the ASP.NET Core project step.
+...
+
+Applied 11, skipped 0, nothing to change 0, not automated yet 9, waiting for an earlier step 1.
 Builds for net10.0: ok: LegacyShop.Core, LegacyShop.Data
 ```
 
@@ -149,6 +153,8 @@ Web.config settings move to `appsettings.json` under the keys `IConfiguration` r
 ```
 
 The effective settings are read the way ASP.NET reads them (`add`, `remove` and `clear` in order, `configSource` and `file` followed); keys only the MVC 5 template needs (`webpages:*`, `ClientValidationEnabled`, ...) are dropped, and `Payment:Url` becomes a `Payment` section. A key that cannot be written as JSON (one that is both a value and a section) is listed in a comment at the top of the file instead of being lost. Web.config itself is not touched until the ASP.NET Core project replaces it, and running the step on an existing appsettings.json only adds what is missing. Config transforms (`Web.Release.config`) are not read yet.
+
+Static files move into `wwwroot/` with their folders: `Content/site.css` becomes `wwwroot/Content/site.css`, which `UseStaticFiles` serves under the same URL, `/Content/site.css`, so views, stylesheets and bookmarks keep working without a change. `Content/`, `Scripts/`, `fonts/`, `Images/`, `img/`, `favicon.ico` and `robots.txt` are moved byte for byte (git records them as renames); code and configuration in those folders (`.cs`, `.config`, ...) stay, a file that already exists in `wwwroot/` is never overwritten, and explicit project items for a moved file are updated. The step waits until the web project is an ASP.NET Core project, because the old app serves these files from their current folders; until then `upgrade` shows it as `Not yet` with the reason.
 
 How the build-fix loop works: it builds only the new target (`-f net10.0`), parses compiler, MSBuild and NuGet errors, and looks them up in a rule catalog. Known fixes (today: missing packages such as `System.Configuration.ConfigurationManager`, `System.Runtime.Caching`) are proposed like any other step, committed, and the project is rebuilt. Errors that need a code change are grouped and explained. Errors in a referenced project are reported as such instead of being "fixed" in the wrong place. The .NET Framework target is left alone, and CI checks that it still builds.
 
