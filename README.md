@@ -179,6 +179,15 @@ The SDK-style conversion keeps behaviour: the project still targets the same .NE
 2. While the web app is still on .NET Framework, libraries are multi-targeted (`net48;net10.0`) so the solution keeps building throughout.
 3. Each step is marked **Automatic** (rule-based), **Agent-assisted** (a code rewrite you approve) or **Manual**, with a risk level raised to *High* whenever a blocker is involved.
 
+### Central Package Management
+
+```console
+$ dotnet-lift cpm path/to/Solution.sln --dry-run   # show the diff
+$ dotnet-lift cpm path/to/Solution.sln             # write Directory.Packages.props, one commit
+```
+
+Every `PackageReference` version moves into one `Directory.Packages.props` next to the solution; project files keep only `Include`. Nothing changes at build time: when projects used different versions of a package, the most common one becomes the central version and the others keep theirs with `VersionOverride` (listed, so aligning them is a conscious decision). Projects still on packages.config are not affected, and legacy project files that use `PackageReference` have to be converted to SDK-style first. Once CPM is on, every later `dotnet-lift upgrade` step that adds a package writes the version to `Directory.Packages.props` instead of the project file.
+
 ## Try it
 
 Requires the .NET 10 SDK.
