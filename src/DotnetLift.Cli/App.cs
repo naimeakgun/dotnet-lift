@@ -35,6 +35,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
             {
                 "analyze" => await AnalyzeAsync(options),
                 "upgrade" => Upgrade(options),
+                "cpm" => new CpmCommand(_prompt, _out).Run(options),
                 "version" => PrintVersion(),
                 "help" => PrintHelp(),
                 _ => Unknown(options.Command),
@@ -181,6 +182,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
             Usage:
               dotnet-lift analyze [path] [options]   Report what has to change and build the plan
               dotnet-lift upgrade [path] [options]   Walk through the plan and apply the steps
+              dotnet-lift cpm [path] [options]       Move package versions into Directory.Packages.props
 
             Arguments:
               path                 A .sln, a .csproj or a folder (default: current folder)
@@ -190,8 +192,8 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
               -o, --output <file>  Where to write the Markdown report (default: lift-report.md next to the solution)
                   --no-report      Print the summary only
               -y, --yes            Do not ask questions; use defaults (upgrade: apply every automatic step)
-                  --dry-run        upgrade: show what would change, write nothing
-                  --allow-dirty    upgrade: run even if the git working tree has uncommitted changes
+                  --dry-run        upgrade, cpm: show what would change, write nothing
+                  --allow-dirty    upgrade, cpm: run even if the git working tree has uncommitted changes
                   --accept-risky   upgrade: also apply steps that change behaviour (e.g. a serialization format)
                                    without asking; without it they always ask, and --yes skips them
               -h, --help           Show this help
