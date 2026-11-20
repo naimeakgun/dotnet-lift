@@ -164,6 +164,7 @@ The SDK-style conversion keeps behaviour: the project still targets the same .NE
 | Packages | MVC 5, Web API 2, `System.Web.Optimization`, OWIN, SignalR 2, Unity/Autofac/Ninject integrations, EF 6, NuGet content packages (jQuery, bootstrap) |
 | Framework references | `System.Web` in class libraries, `System.Configuration`, WCF, Remoting, COM+, `System.Drawing` |
 | Web.config | appSettings, connection strings, Forms/Windows auth, session state, HTTP modules and handlers, custom errors, binding redirects, EF provider config |
+| Data compatibility (C#, Roslyn) | Code that builds everywhere but produces different bytes on modern .NET: `Encoding.Default` / `GetEncoding(0)`, code pages without `CodePagesEncodingProvider`, `Encoding.UTF8.GetString` over hashes, culture-sensitive `ToLower()`/`ToUpper()`, `GetHashCode()` values that may be stored, compressed bytes compared exactly. Each finding says what to verify with golden vectors |
 | Source code (C# and Razor) | `HttpContext.Current`, `HttpRuntime.Cache`, `Session[...]`, `Server.MapPath`, `FormsAuthentication`, `ConfigurationManager`, `BinaryFormatter`, child actions, bundling, `ApiController`, Global.asax registrations, `Thread.Abort`, `AppDomain.CreateDomain` |
 
 ## How the plan is built
