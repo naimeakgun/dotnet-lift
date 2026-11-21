@@ -37,7 +37,8 @@ public class CleanupTests
 
     private static string Package(string id) => $"  <package id=\"{id}\" version=\"1.0.0\" targetFramework=\"net48\" />";
 
-    private static string Read(string dir, string path) => File.ReadAllText(Path.Combine(dir, "A", path));
+    /// <summary>Line endings normalized: on Windows the XML writer turns the "\n" in whitespace into "\r\n".</summary>
+    private static string Read(string dir, string path) => File.ReadAllText(Path.Combine(dir, "A", path)).Replace("\r\n", "\n");
 
     private const string PlainCode = "using System;\nnamespace A { public class Thing { public DateTime When { get; set; } } }\n";
 
