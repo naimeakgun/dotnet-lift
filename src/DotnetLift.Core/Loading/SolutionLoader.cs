@@ -27,7 +27,7 @@ public static partial class SolutionLoader
             }
 
             var projects = Directory.GetFiles(full, "*.csproj", SearchOption.AllDirectories)
-                .Where(p => !PathUtil.IsBuildOutput(p))
+                .Where(p => !PathUtil.IsBuildOutput(p) && !PathUtil.IsBackup(p))
                 .OrderBy(p => p)
                 .ToList();
             if (projects.Count == 0)
