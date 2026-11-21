@@ -118,7 +118,7 @@ public static class ProjectLoader
 
         foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
         {
-            if (PathUtil.IsBuildOutput(file))
+            if (PathUtil.IsBuildOutput(file) || PathUtil.IsBackup(file))
             {
                 continue;
             }
