@@ -14,6 +14,7 @@ Early, built in public. Working today:
 
 - `analyze`: findings with file and line, an ordered plan, a Markdown report.
 - `upgrade`: packages.config → PackageReference, legacy → SDK-style, retarget libraries to `net48;net10.0`, **Roslyn rewrites** for well-known APIs (`HttpRuntime.Cache` → `MemoryCache`, `HttpContext.Current.User` → a `CurrentUser` provider the web app sets at startup, and `BinaryFormatter` → `System.Text.Json` with explicit approval), then a **build → read errors → fix → rebuild** loop that fixes known errors (missing packages) and explains the ones that need a code change. For the web project: Web.config settings → **appsettings.json**.
+- Before the move: `cpm` (Central Package Management), `refs` (DLL file references → packages) and `cleanup` (unused legacy references, Visual Studio migration backups).
 
 On the sample, **both class libraries build for .NET 10** after `dotnet-lift upgrade` (and still for .NET Framework 4.8, so the old web app keeps working). The web project has started: its settings are in appsettings.json; static files, the project file and Program.cs are next. See the [roadmap](docs/ROADMAP.md).
 
@@ -197,6 +198,15 @@ $ dotnet-lift refs               # one commit
 ```
 
 DLLs referenced by file path outside `packages/` (a `SolutionItems` or `lib` folder) become `PackageReference`s. `dotnet-lift.packages.json` says which package each assembly comes from (`"Acme.Logging": "Acme.Logging@2.3.0"`, `"Acme.Core": "Acme.Core"` to take the version from the reference, or `"keep"` for a DLL that has no package); `--by-name` assumes package id = assembly name for the rest. A reference inside a conditional item group keeps its condition, versions go to `Directory.Packages.props` when CPM is on, and projects still on packages.config are left for later. The DLL files are never deleted; the tool lists the ones nothing references any more. `analyze` reports these references, and package versions fixed at `1.0.0` in a project file or `.nuspec`.
+
+### Cleanup
+
+```console
+$ dotnet-lift cleanup --dry-run   # what is unused, what stays and why, and the diff
+$ dotnet-lift cleanup             # one commit for references, one for backup folders
+```
+
+Removes what does not have to be migrated. **Unused references** to legacy libraries (ASP.NET MVC, `System.Web.Optimization` with WebGrease and Antlr, OWIN/Katana, Unity, `System.EnterpriseServices`) go from the project file and packages.config, together with their language packs (`Microsoft.AspNet.Mvc.tr`). A library counts as used, and stays, when Roslyn finds one of its namespaces in the C# code (using directives, aliases, fully qualified names), a `<Using>` item names it, a view or config file mentions it (binding redirects do not count), a Razor view needs it, or another package that builds on it is still referenced; the output says which of these kept it. **Backup folders** Visual Studio leaves behind (`MigrationBackup`, `_UpgradeReport_Files`) are deleted, and the loader no longer reads the old project copies inside them. On the sample, cleanup removes the Unity references the web project no longer uses.
 
 ## Try it
 

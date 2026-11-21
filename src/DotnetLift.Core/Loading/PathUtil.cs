@@ -18,6 +18,18 @@ internal static class PathUtil
             || path.Contains($"{sep}node_modules{sep}", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The backup copies Visual Studio leaves when it migrates a project (MigrationBackup, _UpgradeReport_Files):
+    /// the loader skips them, so an old copy of a project file is never read as a project.
+    /// Not part of <see cref="IsBuildOutput"/>: the SDK would still compile .cs files in them.
+    /// </summary>
+    public static bool IsBackup(string path)
+    {
+        var sep = Path.DirectorySeparatorChar;
+        return path.Contains($"{sep}MigrationBackup{sep}", StringComparison.OrdinalIgnoreCase)
+            || path.Contains($"{sep}_UpgradeReport_Files{sep}", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string Relative(string root, string path) =>
         Path.GetRelativePath(root, path).Replace('\\', '/');
 }
