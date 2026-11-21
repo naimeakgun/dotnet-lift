@@ -37,6 +37,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
                 "upgrade" => Upgrade(options),
                 "cpm" => new CpmCommand(_prompt, _out).Run(options),
                 "refs" => new RefsCommand(_prompt, _out).Run(options),
+                "cleanup" => new CleanupCommand(_prompt, _out).Run(options),
                 "version" => PrintVersion(),
                 "help" => PrintHelp(),
                 _ => Unknown(options.Command),
@@ -185,6 +186,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
               dotnet-lift upgrade [path] [options]   Walk through the plan and apply the steps
               dotnet-lift cpm [path] [options]       Move package versions into Directory.Packages.props
               dotnet-lift refs [path] [options]      Turn DLL file references (HintPath) into PackageReferences
+              dotnet-lift cleanup [path] [options]   Remove unused legacy references and Visual Studio migration backups
 
             Arguments:
               path                 A .sln, a .csproj or a folder (default: current folder)
@@ -194,8 +196,8 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
               -o, --output <file>  Where to write the Markdown report (default: lift-report.md next to the solution)
                   --no-report      Print the summary only
               -y, --yes            Do not ask questions; use defaults (upgrade: apply every automatic step)
-                  --dry-run        upgrade, cpm, refs: show what would change, write nothing
-                  --allow-dirty    upgrade, cpm, refs: run even if the git working tree has uncommitted changes
+                  --dry-run        upgrade, cpm, refs, cleanup: show what would change, write nothing
+                  --allow-dirty    upgrade, cpm, refs, cleanup: run even if the git working tree has uncommitted changes
                   --map <file>     refs: assembly → package map (default: dotnet-lift.packages.json next to the solution)
                   --init-map       refs: write a starting map from the DLLs found, then stop
                   --by-name        refs: assume package id = assembly name for DLLs the map does not mention
