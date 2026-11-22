@@ -1,4 +1,7 @@
 using DotnetLift.Cli;
+using DotnetLift.Core;
+using DotnetLift.Core.Analyzers;
+using DotnetLift.Core.Model;
 using DotnetLift.Core.Loading;
 using DotnetLift.Core.Upgrade;
 
@@ -281,5 +284,63 @@ public class CleanupTests
 
         Assert.Equal(0, exit);
         Assert.Contains("Nothing to clean up.", output.ToString());
+    }
+
+    [Fact]
+    public void Analyze_reports_unused_libraries_and_changes_nothing()
+    {
+        var dir = Project(sdk: false,
+            Ref("Unity.Container") + "\n" + Ref("Owin") + "\n    <Reference Include=\"System.EnterpriseServices\" />",
+            Package("Unity") + "\n" + Package("Owin"),
+            ("Thing.cs", "using Owin;\nnamespace A { class B { } }"));
+        var before = Read(dir, "A.csproj");
+
+        var findings = new SolutionAnalyzer().Analyze(dir).Findings
+            .Where(f => f.Category == UnusedReferenceAnalyzer.Category)
+            .ToList();
+
+        Assert.Equal(2, findings.Count);
+        Assert.All(findings, f =>
+        {
+            Assert.Equal(Severity.Info, f.Severity);
+            Assert.Equal("A", f.Project);
+            Assert.Equal("A.csproj", f.File);
+            Assert.Contains("dotnet-lift cleanup", f.Suggestion);
+        });
+        Assert.Contains(findings, f => f.Message == "Unity (dependency injection) is referenced but not used (reference Unity.Container, package Unity).");
+        Assert.Contains(findings, f => f.Message.StartsWith("System.EnterpriseServices (COM+) is referenced but not used"));
+        Assert.DoesNotContain(findings, f => f.Message.Contains("OWIN")); // used in Thing.cs
+        Assert.Equal(before, Read(dir, "A.csproj"));
+    }
+
+    [Fact]
+    public void Analyze_and_cleanup_agree_on_the_sample()
+    {
+        var solution = SolutionLoader.Load(Samples.LegacyShopSln);
+
+        var findings = new SolutionAnalyzer().Analyze(solution).Findings
+            .Where(f => f.Category == UnusedReferenceAnalyzer.Category)
+            .ToList();
+        var removed = Cleanup.Plan(solution).Removed;
+
+        var finding = Assert.Single(findings);
+        Assert.Equal("LegacyShop.Web", finding.Project);
+        Assert.Equal("LegacyShop.Web.csproj", finding.File);
+        Assert.Equal("Unity (dependency injection) is referenced but not used (reference Unity.Mvc5, package Unity, package Unity.Mvc5).", finding.Message);
+        Assert.Equal(removed.Select(r => (r.Project, r.Library)), findings.Select(f => (f.Project, f.Message[..f.Message.IndexOf(" is referenced", StringComparison.Ordinal)])));
+    }
+
+    [Fact]
+    public void A_used_library_is_not_reported()
+    {
+        var dir = Project(sdk: false, Ref("Unity.Container"), files: ("B.cs", "using Unity;\nnamespace A { class B { } }"));
+
+        var solution = SolutionLoader.Load(dir);
+        var project = Assert.Single(solution.Projects);
+
+        var item = Assert.Single(Cleanup.UnusedOrKept(project));
+
+        Assert.Equal("Unity is used in B.cs", item.KeptBecause);
+        Assert.Empty(new UnusedReferenceAnalyzer().Analyze(project, new AnalysisContext(solution, "net10.0")));
     }
 }
