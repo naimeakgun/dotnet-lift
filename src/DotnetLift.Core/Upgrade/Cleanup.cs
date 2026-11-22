@@ -93,34 +93,23 @@ public static partial class Cleanup
 
         foreach (var project in solution.Projects)
         {
-            var referenced = catalog
-                .Select(library => (Library: library, References: ReferencesOf(project, library)))
-                .Where(x => x.References.Count > 0)
-                .ToList();
-            if (referenced.Count == 0)
+            var toRemove = new List<LegacyLibrary>();
+            foreach (var (library, item) in Classify(project, catalog))
             {
-                continue;
-            }
-
-            var usage = NamespaceUsage.Collect(project);
-            var toRemove = new List<(LegacyLibrary Library, IReadOnlyList<string> References)>();
-            foreach (var (library, references) in referenced)
-            {
-                var reason = WhyKept(project, library, usage);
-                if (reason is null)
+                if (item.KeptBecause is null)
                 {
-                    toRemove.Add((library, references));
-                    removed.Add(new CleanupItem(project.Name, library.Name, references, null));
+                    toRemove.Add(library);
+                    removed.Add(item);
                 }
                 else
                 {
-                    kept.Add(new CleanupItem(project.Name, library.Name, references, reason));
+                    kept.Add(item);
                 }
             }
 
             if (toRemove.Count > 0)
             {
-                referenceChanges.AddRange(RemoveReferences(project, toRemove.Select(x => x.Library).ToList()));
+                referenceChanges.AddRange(RemoveReferences(project, toRemove));
                 if (project.IsSdkStyle && CentralPackageFile.Find(project.Directory) is { } central)
                 {
                     notes.Add($"{project.Name}: the PackageVersion entries in {PathUtil.Relative(rootDir, central.Path)} stay; remove them once no project uses those packages.");
@@ -135,6 +124,33 @@ public static partial class Cleanup
 
         var (backupFolders, backupChanges) = Backups(rootDir);
         return new CleanupPlan(removed, kept, referenceChanges, backupFolders, backupChanges, notes);
+    }
+
+    /// <summary>
+    /// Every catalog library <paramref name="project"/> references, each with whether it is unused
+    /// (<see cref="CleanupItem.KeptBecause"/> null) or what keeps it. Reads the project's files; changes nothing.
+    /// </summary>
+    public static IReadOnlyList<CleanupItem> UnusedOrKept(ProjectInfo project, IReadOnlyList<LegacyLibrary>? catalog = null) =>
+        Classify(project, catalog ?? Catalog).Select(x => x.Item).ToList();
+
+    private static List<(LegacyLibrary Library, CleanupItem Item)> Classify(ProjectInfo project, IReadOnlyList<LegacyLibrary> catalog)
+    {
+        var result = new List<(LegacyLibrary Library, CleanupItem Item)>();
+        var referenced = catalog
+            .Select(library => (Library: library, References: ReferencesOf(project, library)))
+            .Where(x => x.References.Count > 0)
+            .ToList();
+        if (referenced.Count == 0)
+        {
+            return result;
+        }
+
+        var usage = NamespaceUsage.Collect(project);
+        foreach (var (library, references) in referenced)
+        {
+            result.Add((library, new CleanupItem(project.Name, library.Name, references, WhyKept(project, library, usage))));
+        }
+        return result;
     }
 
     /// <summary>The references and packages of <paramref name="library"/> the project has, as "reference X" / "package X".</summary>
