@@ -205,9 +205,12 @@ DLLs referenced by file path outside `packages/` (a `SolutionItems` or `lib` fol
 ```console
 $ dotnet-lift cleanup --dry-run   # what is unused, what stays and why, and the diff
 $ dotnet-lift cleanup             # one commit for references, one for backup folders
+$ dotnet-lift cleanup --remove-project Old.Reports   # take one project out of the .sln
 ```
 
 Removes what does not have to be migrated. **Unused references** to legacy libraries (ASP.NET MVC, `System.Web.Optimization` with WebGrease and Antlr, OWIN/Katana, Unity, `System.EnterpriseServices`) go from the project file and packages.config, together with their language packs (`Microsoft.AspNet.Mvc.tr`). A library counts as used, and stays, when Roslyn finds one of its namespaces in the C# code (using directives, aliases, fully qualified names), a `<Using>` item names it, a view or config file mentions it (binding redirects do not count), a Razor view needs it, or another package that builds on it is still referenced; the output says which of these kept it. **Backup folders** Visual Studio leaves behind (`MigrationBackup`, `_UpgradeReport_Files`) are deleted, and the loader no longer reads the old project copies inside them. On the sample, cleanup removes the Unity references the web project no longer uses. `analyze` runs the same check and lists each unused library as an info finding (category *Cleanup*) without changing anything.
+
+**`--remove-project <name>`** takes a project nobody needs out of the solution. It first lists everything in the solution that depends on it: project references, file references to its DLL (by its `AssemblyName`), and the projects that depend on those in turn. While anything references it directly, nothing changes and the command exits with 1. Otherwise the project's entry, its configuration lines, its solution-folder entry and other projects' build-order entries on it leave the `.sln` (line endings kept) in one commit. The project folder stays on disk, since other repositories may still consume the library as a package.
 
 ## Try it
 
