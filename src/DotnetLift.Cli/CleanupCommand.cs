@@ -8,6 +8,11 @@ public sealed class CleanupCommand(Prompt prompt, TextWriter output)
 {
     public int Run(Options options)
     {
+        if (options.RemoveProject is { } name)
+        {
+            return RemoveProject(options, name);
+        }
+
         output.WriteLine("dotnet-lift · cleanup (unused references, migration backups)");
         output.WriteLine();
 
@@ -103,6 +108,74 @@ public sealed class CleanupCommand(Prompt prompt, TextWriter output)
         {
             output.WriteLine("Build the solution to confirm nothing needed them; every removal is its own commit and can be reverted.");
         }
+        return 0;
+    }
+
+    /// <summary>`cleanup --remove-project NAME`: list what depends on the project, and take it out of the .sln only when nothing does.</summary>
+    private int RemoveProject(Options options, string name)
+    {
+        output.WriteLine($"dotnet-lift · cleanup (remove project {name} from the solution)");
+        output.WriteLine();
+
+        var solution = SolutionLoader.Load(options.Path);
+        var plan = ProjectRemoval.Plan(solution, name);
+        var root = Path.GetDirectoryName(solution.Path)!;
+
+        if (plan.Dependents.Count == 0)
+        {
+            output.WriteLine($"Nothing in the solution depends on {plan.Project.Name}.");
+        }
+        else
+        {
+            output.WriteLine($"Depends on {plan.Project.Name}:");
+            foreach (var dependent in plan.Dependents)
+            {
+                output.WriteLine($"  {(dependent.Direct ? "✗" : "•")} {dependent.Project} ({dependent.How})");
+            }
+        }
+        output.WriteLine();
+
+        if (!plan.CanRemove)
+        {
+            output.WriteLine($"{plan.Project.Name} stays: remove the references marked ✗ first (or remove those projects too), then run this again.");
+            return 1;
+        }
+
+        foreach (var project in plan.BuildOrderEntries)
+        {
+            output.WriteLine($"ℹ {project}: its build-order entry for {plan.Project.Name} in the solution goes too.");
+        }
+        output.WriteLine($"ℹ The folder {Rel(root, plan.Project.Directory)}/ stays on disk; delete it yourself once you are sure. Repositories outside this solution may still use it as a package.");
+        output.WriteLine();
+
+        var change = plan.SolutionChange!;
+        var stats = LineDiff.Count(change.ReadOriginal(), change.NewContent);
+        output.WriteLine($"    ~ {Rel(root, change.Path)} (+{stats.Added} −{stats.Removed})");
+        output.WriteLine();
+
+        if (options.DryRun)
+        {
+            output.Write(LineDiff.Unified(change.ReadOriginal(), change.NewContent, Rel(root, change.Path)));
+            output.WriteLine();
+            output.WriteLine("Dry run: nothing was written.");
+            return 0;
+        }
+
+        var git = GitRepository.Find(root);
+        if (git is not null && !options.AllowDirty && !git.IsClean(out _))
+        {
+            output.WriteLine("The working tree has uncommitted changes. Commit or stash them first, or pass --allow-dirty.");
+            return 1;
+        }
+
+        if (!options.Yes && !prompt.Confirm($"Remove {plan.Project.Name} from the solution?", defaultYes: true))
+        {
+            output.WriteLine("Nothing was changed.");
+            return 0;
+        }
+
+        change.Apply();
+        Commit(git, [change], $"dotnet-lift: Remove {plan.Project.Name} from the solution");
         return 0;
     }
 

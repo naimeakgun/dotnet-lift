@@ -201,6 +201,9 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
                   --map <file>     refs: assembly → package map (default: dotnet-lift.packages.json next to the solution)
                   --init-map       refs: write a starting map from the DLLs found, then stop
                   --by-name        refs: assume package id = assembly name for DLLs the map does not mention
+                  --remove-project <name>
+                                   cleanup: remove that project from the .sln instead, after listing what depends
+                                   on it (refused while another project still references it)
                   --accept-risky   upgrade: also apply steps that change behaviour (e.g. a serialization format)
                                    without asking; without it they always ask, and --yes skips them
               -h, --help           Show this help
