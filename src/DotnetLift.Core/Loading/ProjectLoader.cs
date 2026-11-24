@@ -136,7 +136,9 @@ public static class ProjectLoader
 
         project.SourceFiles.Sort(StringComparer.Ordinal);
         project.ViewFiles.Sort(StringComparer.Ordinal);
-        project.Kind = DetectKind(project, FirstValue(root, "ProjectTypeGuids"));
+        var projectTypeGuids = FirstValue(root, "ProjectTypeGuids");
+        project.Kind = DetectKind(project, projectTypeGuids);
+        project.Test = TestProjectDetector.Detect(project, projectTypeGuids);
         return project;
     }
 

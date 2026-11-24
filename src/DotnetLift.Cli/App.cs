@@ -123,7 +123,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
         {
             var b = analysis.Count(p, Severity.Blocker);
             var w = analysis.Count(p, Severity.Warning);
-            _out.WriteLine($"  {i++}. {p.Name,-28} {MarkdownReport.Describe(p.Kind),-24} {p.TargetFramework,-8} " +
+            _out.WriteLine($"  {i++}. {p.Name,-28} {MarkdownReport.Describe(p),-24} {p.TargetFramework,-8} " +
                              $"{b} blocker(s), {w} warning(s)");
         }
 
