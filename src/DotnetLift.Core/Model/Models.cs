@@ -11,6 +11,17 @@ public enum ProjectKind
     AspNetWebForms,
 }
 
+public enum TestFramework
+{
+    MSTest,
+    XUnit,
+    NUnit,
+}
+
+/// <summary>What makes a project a test project: the framework, the package or reference it was recognised by, and its version.</summary>
+/// <param name="VisualStudioMSTest">MSTest v1: Microsoft.VisualStudio.QualityTools.UnitTestFramework from the Visual Studio installation, not a package.</param>
+public sealed record TestProjectInfo(TestFramework Framework, string Evidence, string? Version, bool VisualStudioMSTest);
+
 public enum Severity
 {
     Info,
@@ -54,6 +65,10 @@ public sealed class ProjectInfo
     public string? DeclaredVersion { get; set; }
     public string? DeclaredVersionSource { get; set; }
 
+    /// <summary>Set when the project uses MSTest, xUnit or NUnit.</summary>
+    public TestProjectInfo? Test { get; set; }
+    public bool IsTest => Test is not null;
+
     public bool HasPackagesConfig { get; init; }
     public string? WebConfigPath { get; init; }
     public string? AppConfigPath { get; init; }
@@ -70,6 +85,9 @@ public sealed class ProjectInfo
 
     public bool HasPackage(string id) =>
         Packages.Any(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    public PackageRef? FindPackage(string id) =>
+        Packages.FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
     public override string ToString() => Name;
 }

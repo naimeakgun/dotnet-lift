@@ -25,6 +25,7 @@ public sealed class SolutionAnalyzer
         new SourceApiAnalyzer(),
         new DataCompatibilityAnalyzer(),
         new UnusedReferenceAnalyzer(),
+        new TestProjectAnalyzer(),
     ];
 
     public AnalysisResult Analyze(string inputPath, string targetFramework = DefaultTarget) =>

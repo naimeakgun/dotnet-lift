@@ -1,4 +1,5 @@
 using System.Text;
+using DotnetLift.Core.Loading;
 using DotnetLift.Core.Model;
 using DotnetLift.Core.Planning;
 
@@ -31,7 +32,7 @@ public static class MarkdownReport
         var i = 1;
         foreach (var p in plan.Order)
         {
-            sb.AppendLine($"| {i++} | {p.Name} | {Describe(p.Kind)} | {p.TargetFramework ?? "?"} | " +
+            sb.AppendLine($"| {i++} | {p.Name} | {Describe(p)} | {p.TargetFramework ?? "?"} | " +
                           $"{(p.IsSdkStyle ? "SDK-style" : "Legacy")} | {analysis.Count(p, Severity.Blocker)} | {analysis.Count(p, Severity.Warning)} |");
         }
         sb.AppendLine();
@@ -104,6 +105,10 @@ public static class MarkdownReport
 
         return sb.ToString();
     }
+
+    /// <summary>The project's kind, or "Tests (xUnit)" for a test project.</summary>
+    public static string Describe(ProjectInfo project) =>
+        project.Test is { } test ? $"Tests ({TestProjectDetector.Describe(test.Framework)})" : Describe(project.Kind);
 
     public static string Describe(ProjectKind kind) => kind switch
     {
