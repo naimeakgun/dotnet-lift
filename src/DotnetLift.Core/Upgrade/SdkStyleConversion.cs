@@ -10,6 +10,7 @@ namespace DotnetLift.Core.Upgrade;
 /// <summary>
 /// Rewrites a legacy class library project file in the SDK format, still targeting the same .NET Framework version.
 /// Behaviour is preserved: the same files are compiled, the same references and packages are used.
+/// Test projects also get the packages `dotnet test` needs; MSTest v1 moves from the Visual Studio reference to the MSTest packages.
 /// </summary>
 public sealed class SdkStyleConversion : IStepExecutor
 {
@@ -97,8 +98,10 @@ public sealed class SdkStyleConversion : IStepExecutor
         sb.AppendLine("  </PropertyGroup>");
 
         // Framework references that are not implicit and do not come from a NuGet package.
+        // MSTest v1's Visual Studio reference is replaced by the MSTest packages (see TestPackages).
         var referenceElements = ProjectXml.Elements(root, "Reference")
             .Where(r => r.Attribute("Include") is not null)
+            .Where(r => !TestPackages.IsReplacedReference(project, r.Attribute("Include")!.Value.Split(',')[0].Trim()))
             .ToList();
 
         var references = referenceElements
@@ -118,10 +121,12 @@ public sealed class SdkStyleConversion : IStepExecutor
         Group(sb, references.Select(r => $"<Reference Include=\"{Escape(r)}\" />")
             .Concat(fileReferences.Select(r => $"<Reference Include=\"{Escape(r.Include)}\"><HintPath>{Escape(r.HintPath!)}</HintPath></Reference>")));
 
-        // Packages: PackageReference items already in the file, else packages.config.
+        // Packages: PackageReference items already in the file, else packages.config,
+        // plus what a test project needs for `dotnet test` (test SDK, adapter).
         var packages = project.Packages
             .GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
+            .Concat(TestPackages.ToAdd(project, central))
             .OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
             .Select(p => PackageReferences.CreateText(p.Id, p.Version, central));
         Group(sb, packages);
