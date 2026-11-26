@@ -12,7 +12,7 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
     public sealed record Settings(bool Yes, bool DryRun, bool AllowDirty, bool AcceptRisky = false);
 
     public sealed record Summary(int Applied, int Skipped, int NotAutomated, int NothingToDo, int Waiting, bool Quit,
-        List<string> BuildsOk, List<string> BuildsWithErrors);
+        List<string> BuildsOk, List<string> BuildsWithErrors, List<string> TestsOk, List<string> TestsFailing);
 
     public int Run(AnalysisResult analysis, UpgradePlan plan, Settings settings)
     {
@@ -48,6 +48,12 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
                              (summary.BuildsOk.Count > 0 ? $"ok: {string.Join(", ", summary.BuildsOk)}" : "none ok yet") +
                              (summary.BuildsWithErrors.Count > 0 ? $"; errors left: {string.Join(", ", summary.BuildsWithErrors)}" : ""));
         }
+        if (summary.TestsOk.Count + summary.TestsFailing.Count > 0)
+        {
+            output.WriteLine($"Tests on {plan.TargetFramework}: " +
+                             (summary.TestsOk.Count > 0 ? $"passing: {string.Join(", ", summary.TestsOk)}" : "none passing yet") +
+                             (summary.TestsFailing.Count > 0 ? $"; failing: {string.Join(", ", summary.TestsFailing)}" : ""));
+        }
         if (summary.Applied > 0 && git is not null)
         {
             output.WriteLine("Each applied step is a separate commit: `git log --oneline` shows them, `git revert <sha>` undoes one.");
@@ -62,7 +68,9 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
         var applyAll = settings.Yes;
         var buildsOk = new List<string>();
         var buildsWithErrors = new List<string>();
-        Summary Done(bool quit) => new(applied, skipped, notAutomated, nothing, waiting, quit, buildsOk, buildsWithErrors);
+        var testsOk = new List<string>();
+        var testsFailing = new List<string>();
+        Summary Done(bool quit) => new(applied, skipped, notAutomated, nothing, waiting, quit, buildsOk, buildsWithErrors, testsOk, testsFailing);
 
         foreach (var step in plan.Steps)
         {
@@ -129,6 +137,15 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
                 if (result.Quit)
                 {
                     return Done(quit: true);
+                }
+
+                // A test project that builds proves nothing yet: run its tests on the new target.
+                if (result.Succeeded && fresh.IsTest && builder is ITestRunner tester)
+                {
+                    output.WriteLine($"  Running tests for {tfm}...");
+                    var tests = tester.Test(project.FullPath, tfm);
+                    PrintTestResult(tests, project, tfm);
+                    (tests.Succeeded ? testsOk : testsFailing).Add(project.Name);
                 }
                 continue;
             }
@@ -241,6 +258,27 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
         output.WriteLine($"  Fix: {fix.Title}  (resolves {codes})");
         output.WriteLine($"  {fix.Explanation}");
         PrintChanges(fix.Changes, root);
+    }
+
+    private void PrintTestResult(TestRunResult tests, ProjectInfo project, string tfm)
+    {
+        var counts = $"{tests.Passed} passed, {tests.Failed} failed, {tests.Skipped} skipped";
+        if (tests.Succeeded)
+        {
+            output.WriteLine($"  ✓ {project.Name}: tests pass on {tfm} ({counts}).");
+            return;
+        }
+
+        output.WriteLine($"  ✗ {project.Name}: tests fail on {tfm} ({counts}).");
+        foreach (var name in tests.FailedTests.Take(10))
+        {
+            output.WriteLine($"      {name}");
+        }
+        if (tests.FailedTests.Count > 10)
+        {
+            output.WriteLine($"      ... and {tests.FailedTests.Count - 10} more");
+        }
+        output.WriteLine($"      → Run `dotnet test {Path.GetFileName(project.FullPath)} -f {tfm}` for the details; behaviour that differs between frameworks shows up here.");
     }
 
     private void PrintBuildResult(BuildLoopResult result, ProjectInfo project, string tfm, string root)
