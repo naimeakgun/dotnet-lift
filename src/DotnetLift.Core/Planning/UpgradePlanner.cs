@@ -1,4 +1,5 @@
 using DotnetLift.Core.Analyzers;
+using DotnetLift.Core.Loading;
 using DotnetLift.Core.Model;
 using DotnetLift.Core.Upgrade;
 
@@ -59,9 +60,11 @@ public static class UpgradePlanner
 
         if (!p.IsSdkStyle)
         {
+            var testNote = TestNote(p);
             b.Add("sdk-style", "Convert to SDK-style project",
-                "Rewrite the .csproj in the SDK format: <Compile> lists, HintPaths and MSBuild imports go away, files the old project did not compile are excluded explicitly. The project still targets .NET Framework after this step, so the code does not change yet.",
-                StepMode.Automatic, Risk.Low, f => f.Category == "Project file");
+                "Rewrite the .csproj in the SDK format: <Compile> lists, HintPaths and MSBuild imports go away, files the old project did not compile are excluded explicitly. The project still targets .NET Framework after this step, so the code does not change yet." + testNote,
+                StepMode.Automatic, Risk.Low,
+                f => f.Category == "Project file" || (testNote.Length > 0 && f.Category == TestProjectAnalyzer.Category));
         }
 
         if (p.References("System.Web"))
@@ -141,6 +144,25 @@ public static class UpgradePlanner
         b.Add("build", $"Build for {target} and fix errors",
             $"Build the {target} target, fix known errors automatically (for example a missing package) and rebuild, then list the errors that need a code change with what to do about them.",
             StepMode.Automatic, Risk.Low, _ => false, argument: target);
+    }
+
+    /// <summary>What the SDK-style conversion adds to a test project, as a sentence for the step description ("" for other projects).</summary>
+    private static string TestNote(ProjectInfo p)
+    {
+        if (p.Test is not { } test)
+        {
+            return "";
+        }
+        var added = TestPackages.ToAdd(p);
+        var framework = TestProjectDetector.Describe(test.Framework);
+        if (added.Count == 0)
+        {
+            return $" {framework} test project: its test packages are kept as they are.";
+        }
+        var replaced = TestPackages.IsReplacedReference(p, TestProjectDetector.VisualStudioMSTestAssembly) && p.References(TestProjectDetector.VisualStudioMSTestAssembly)
+            ? $" The {TestProjectDetector.VisualStudioMSTestAssembly} reference is removed; namespaces and attributes stay the same."
+            : "";
+        return $" {framework} test project: adds {string.Join(", ", added.Select(a => $"{a.Id} {a.Version}"))} so `dotnet test` can run it.{replaced}";
     }
 
     private static void AddWebSteps(StepBuilder b, ProjectInfo p, string target)

@@ -4,6 +4,7 @@ using DotnetLift.Core.Loading;
 using DotnetLift.Core.Model;
 using DotnetLift.Core.Planning;
 using DotnetLift.Core.Reporting;
+using DotnetLift.Core.Upgrade;
 
 namespace DotnetLift.Tests;
 
@@ -198,6 +199,143 @@ public class TestProjectTests
 
         Assert.Contains("| 1 | A.Tests | Tests (xUnit) | v4.8 | Legacy |", report);
         Assert.Contains("xUnit test project (package xunit 2.4.2).", report);
+    }
+
+    private static readonly UpgradeStep AnyStep =
+        new(1, "x", "x", "x", "x", StepMode.Automatic, Risk.Low, Array.Empty<Finding>());
+
+    private const string VisualStudioMSTestReference =
+        "    <Reference Include=\"Microsoft.VisualStudio.QualityTools.UnitTestFramework, Version=10.1.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL\" />";
+
+    private static string CsprojPath(string dir) => Path.Combine(dir, "A.Tests", "A.Tests.csproj");
+
+    /// <summary>Runs the SDK-style conversion on the single project and returns the new project file.</summary>
+    private static string ConvertToSdkStyle(string dir)
+    {
+        var changes = new SdkStyleConversion().Prepare(ProjectLoader.Load(CsprojPath(dir)), AnyStep, "net10.0");
+        FileChange.ApplyAll(changes);
+        return File.ReadAllText(CsprojPath(dir));
+    }
+
+    [Fact]
+    public void Sdk_conversion_moves_MSTest_v1_to_the_MSTest_packages()
+    {
+        var dir = Project(sdk: false, VisualStudioMSTestReference,
+            properties: $"    <ProjectTypeGuids>{LegacyTestGuids}</ProjectTypeGuids>");
+
+        var csproj = ConvertToSdkStyle(dir);
+
+        Assert.DoesNotContain("QualityTools", csproj);
+        Assert.DoesNotContain("ProjectTypeGuids", csproj);
+        Assert.Contains($"<PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdkVersion}\" />", csproj);
+        Assert.Contains($"<PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestVersion}\" />", csproj);
+        Assert.Contains($"<PackageReference Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestVersion}\" />", csproj);
+
+        var reloaded = Load(dir);
+        Assert.True(reloaded.IsSdkStyle);
+        Assert.Equal(new TestProjectInfo(TestFramework.MSTest, $"package MSTest.TestFramework {TestPackages.MSTestVersion}", TestPackages.MSTestVersion, VisualStudioMSTest: false), reloaded.Test);
+        var finding = Assert.Single(Analyze(dir));
+        Assert.StartsWith("Has the packages `dotnet test` needs (Microsoft.NET.Test.Sdk, MSTest.TestFramework, MSTest.TestAdapter)", finding.Suggestion);
+    }
+
+    [Fact]
+    public void Sdk_conversion_adds_an_MSTest_adapter_with_the_framework_version()
+    {
+        var dir = Project(sdk: false,
+            Ref("Microsoft.VisualStudio.TestPlatform.TestFramework", "14.0.0.0", "..\\packages\\MSTest.TestFramework.2.2.10\\lib\\net45\\Microsoft.VisualStudio.TestPlatform.TestFramework.dll"),
+            Package("MSTest.TestFramework", "2.2.10"));
+
+        var csproj = ConvertToSdkStyle(dir);
+
+        Assert.Contains("<PackageReference Include=\"MSTest.TestAdapter\" Version=\"2.2.10\" />", csproj);
+        Assert.Contains("<PackageReference Include=\"MSTest.TestFramework\" Version=\"2.2.10\" />", csproj);
+        Assert.Contains("<PackageReference Include=\"Microsoft.NET.Test.Sdk\"", csproj);
+        Assert.DoesNotContain("HintPath", csproj);
+        Assert.False(File.Exists(Path.Combine(dir, "A.Tests", "packages.config")));
+    }
+
+    [Fact]
+    public void Sdk_conversion_keeps_an_existing_xunit_adapter_and_adds_the_test_sdk()
+    {
+        var dir = Project(sdk: false, "",
+            Package("xunit", "2.4.2") + "\n" + Package("xunit.core", "2.4.2") + "\n" + Package("xunit.runner.visualstudio", "2.4.5"));
+
+        var csproj = ConvertToSdkStyle(dir);
+
+        Assert.Contains("<PackageReference Include=\"xunit.runner.visualstudio\" Version=\"2.4.5\" />", csproj);
+        Assert.Contains($"<PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdkVersion}\" />", csproj);
+        Assert.Single(Load(dir).Packages, p => p.Id == "xunit.runner.visualstudio");
+    }
+
+    [Fact]
+    public void Sdk_conversion_adds_the_NUnit_adapter()
+    {
+        var dir = Project(sdk: false, "", Package("NUnit", "3.14.0"));
+
+        var csproj = ConvertToSdkStyle(dir);
+
+        Assert.Contains($"<PackageReference Include=\"NUnit3TestAdapter\" Version=\"{TestPackages.NUnitAdapterVersion}\" />", csproj);
+        Assert.Contains("<PackageReference Include=\"NUnit\" Version=\"3.14.0\" />", csproj);
+    }
+
+    [Theory]
+    [InlineData("NUnit", "2.6.4")]
+    [InlineData("xunit", "1.9.2")]
+    public void Sdk_conversion_adds_nothing_to_frameworks_that_must_be_updated_first(string id, string version)
+    {
+        var dir = Project(sdk: false, "", Package(id, version));
+
+        var csproj = ConvertToSdkStyle(dir);
+
+        Assert.DoesNotContain("Microsoft.NET.Test.Sdk", csproj);
+        Assert.DoesNotContain("Adapter", csproj);
+        Assert.DoesNotContain("runner", csproj);
+        Assert.Contains($"<PackageReference Include=\"{id}\" Version=\"{version}\" />", csproj);
+    }
+
+    [Fact]
+    public void Sdk_conversion_puts_the_test_package_versions_in_Directory_Packages_props()
+    {
+        var dir = Project(sdk: false, VisualStudioMSTestReference);
+        File.WriteAllText(Path.Combine(dir, "Directory.Packages.props"),
+            "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n" +
+            "    <PackageVersion Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.12.0\" />\n  </ItemGroup>\n</Project>\n");
+
+        var csproj = ConvertToSdkStyle(dir);
+        var props = File.ReadAllText(Path.Combine(dir, "Directory.Packages.props"));
+
+        Assert.Contains("<PackageReference Include=\"Microsoft.NET.Test.Sdk\" />", csproj); // the central version is used
+        Assert.Contains("<PackageReference Include=\"MSTest.TestAdapter\" />", csproj);
+        Assert.DoesNotContain("VersionOverride", csproj);
+        Assert.Contains("<PackageVersion Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.12.0\" />", props);
+        Assert.Contains($"<PackageVersion Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestVersion}\" />", props);
+        Assert.Contains($"<PackageVersion Include=\"MSTest.TestFramework\" Version=\"{TestPackages.MSTestVersion}\" />", props);
+    }
+
+    [Fact]
+    public void Complete_test_projects_and_libraries_get_no_test_packages()
+    {
+        var complete = Project(sdk: false, "",
+            Package("Microsoft.NET.Test.Sdk", "17.13.0") + "\n" + Package("NUnit", "3.14.0") + "\n" + Package("NUnit3TestAdapter", "4.6.0"));
+        var library = ProjectLoader.Load(Path.Combine(Samples.LegacyShopDir, "LegacyShop.Core", "LegacyShop.Core.csproj"));
+
+        Assert.Empty(TestPackages.ToAdd(Load(complete)));
+        Assert.Empty(TestPackages.ToAdd(library));
+        Assert.Empty(TestPackages.ToAdd(Load(Project(sdk: false, "", Package("MSTest", "3.6.4")))));
+    }
+
+    [Fact]
+    public void The_plan_says_what_the_sdk_conversion_adds_to_a_test_project()
+    {
+        var dir = Project(sdk: false, VisualStudioMSTestReference);
+        var analysis = new SolutionAnalyzer().Analyze(dir);
+
+        var step = Assert.Single(UpgradePlanner.Create(analysis).Steps, s => s.Id == "sdk-style");
+
+        Assert.Contains($"MSTest test project: adds Microsoft.NET.Test.Sdk {TestPackages.TestSdkVersion}, MSTest.TestFramework {TestPackages.MSTestVersion}, " +
+                        $"MSTest.TestAdapter {TestPackages.MSTestVersion} so `dotnet test` can run it.", step.Description);
+        Assert.Contains("Microsoft.VisualStudio.QualityTools.UnitTestFramework reference is removed", step.Description);
+        Assert.Contains(step.Findings, f => f.Category == TestProjectAnalyzer.Category && f.Severity == Severity.Warning);
     }
 
     [Theory]
