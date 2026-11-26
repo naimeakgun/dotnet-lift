@@ -12,6 +12,7 @@ public sealed class Options
     public bool AllowDirty { get; private set; }
     public bool AcceptRisky { get; private set; }
     public string? Map { get; private set; }
+    public string? Profile { get; private set; }
     public bool InitMap { get; private set; }
     public bool ByName { get; private set; }
     public string? RemoveProject { get; private set; }
@@ -58,6 +59,9 @@ public sealed class Options
                     break;
                 case "--map":
                     o.Map = Next(args, ref i, a);
+                    break;
+                case "--profile":
+                    o.Profile = Next(args, ref i, a);
                     break;
                 case "--init-map":
                     o.InitMap = true;

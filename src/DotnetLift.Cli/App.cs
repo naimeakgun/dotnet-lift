@@ -36,6 +36,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
                 "analyze" => await AnalyzeAsync(options),
                 "upgrade" => Upgrade(options),
                 "cpm" => new CpmCommand(_prompt, _out).Run(options),
+                "init" => Init(options),
                 "refs" => new RefsCommand(_prompt, _out).Run(options),
                 "cleanup" => new CleanupCommand(_prompt, _out).Run(options),
                 "version" => PrintVersion(),
@@ -55,7 +56,8 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
         _out.WriteLine("dotnet-lift · analyze");
         _out.WriteLine();
 
-        var target = AskTarget(options);
+        var profile = LoadProfile(options);
+        var target = AskTarget(options, profile);
         var analysis = new SolutionAnalyzer().Analyze(options.Path, target);
         if (analysis.Solution.Projects.Count == 0)
         {
@@ -63,7 +65,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
             return 1;
         }
 
-        var plan = UpgradePlanner.Create(analysis);
+        var plan = UpgradePlanner.Create(analysis, profile);
         PrintSummary(analysis, plan);
 
         if (options.NoReport)
@@ -89,7 +91,8 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
         _out.WriteLine("dotnet-lift · upgrade");
         _out.WriteLine();
 
-        var target = AskTarget(options);
+        var profile = LoadProfile(options);
+        var target = AskTarget(options, profile);
         var analysis = new SolutionAnalyzer().Analyze(options.Path, target);
         if (analysis.Solution.Projects.Count == 0)
         {
@@ -98,13 +101,41 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
         }
 
         _out.WriteLine($"Target: {target}");
-        var plan = UpgradePlanner.Create(analysis);
-        var settings = new UpgradeRunner.Settings(options.Yes, options.DryRun, options.AllowDirty, options.AcceptRisky);
+        var plan = UpgradePlanner.Create(analysis, profile);
+        var settings = new UpgradeRunner.Settings(options.Yes, options.DryRun, options.AllowDirty, options.AcceptRisky,
+            SingleCommit: profile.Commits == CommitMode.Single);
         return new UpgradeRunner(_prompt, _out, _builder).Run(analysis, plan, settings);
     }
 
-    private string AskTarget(Options options) =>
-        options.Target ?? (options.Yes
+    /// <summary>--profile, else the nearest dotnet-lift.json at or above the input, else the defaults.</summary>
+    private MigrationProfile LoadProfile(Options options)
+    {
+        var profile = options.Profile is not null ? MigrationProfile.Load(options.Profile) : MigrationProfile.Find(options.Path);
+        if (!profile.IsDefault)
+        {
+            _out.WriteLine($"Profile: {profile.Path} ({profile.Describe()})");
+            _out.WriteLine();
+        }
+        return profile;
+    }
+
+    private int Init(Options options)
+    {
+        var full = Path.GetFullPath(options.Path);
+        var dir = Directory.Exists(full) ? full : Path.GetDirectoryName(full)!;
+        var path = Path.Combine(dir, MigrationProfile.FileName);
+        if (File.Exists(path))
+        {
+            _out.WriteLine($"{path} already exists.");
+            return 1;
+        }
+        File.WriteAllText(path, MigrationProfile.Template());
+        _out.WriteLine($"Wrote {path}. Edit it with the team's decisions and commit it; analyze and upgrade read it from then on.");
+        return 0;
+    }
+
+    private string AskTarget(Options options, MigrationProfile profile) =>
+        options.Target ?? profile.Target ?? (options.Yes
             ? SolutionAnalyzer.DefaultTarget
             : _prompt.Choose("Which .NET version do you want to move to?",
                 [
@@ -184,6 +215,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
             Usage:
               dotnet-lift analyze [path] [options]   Report what has to change and build the plan
               dotnet-lift upgrade [path] [options]   Walk through the plan and apply the steps
+              dotnet-lift init [path]                Write a dotnet-lift.json migration profile to fill in
               dotnet-lift cpm [path] [options]       Move package versions into Directory.Packages.props
               dotnet-lift refs [path] [options]      Turn DLL file references (HintPath) into PackageReferences
               dotnet-lift cleanup [path] [options]   Remove unused legacy references and Visual Studio migration backups
@@ -192,7 +224,8 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
               path                 A .sln, a .csproj or a folder (default: current folder)
 
             Options:
-              -t, --target <tfm>   net10.0 (default) or net11.0. Asked interactively if omitted.
+              -t, --target <tfm>   net10.0 (default) or net11.0. Taken from the profile, else asked interactively.
+                  --profile <file> Migration profile (default: the nearest dotnet-lift.json at or above the path)
               -o, --output <file>  Where to write the Markdown report (default: lift-report.md next to the solution)
                   --no-report      Print the summary only
               -y, --yes            Do not ask questions; use defaults (upgrade: apply every automatic step)

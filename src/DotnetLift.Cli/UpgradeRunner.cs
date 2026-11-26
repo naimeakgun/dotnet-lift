@@ -9,7 +9,12 @@ namespace DotnetLift.Cli;
 /// <summary>Walks the plan step by step: shows what will change, asks, applies, commits.</summary>
 public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder builder)
 {
-    public sealed record Settings(bool Yes, bool DryRun, bool AllowDirty, bool AcceptRisky = false);
+    public sealed record Settings(bool Yes, bool DryRun, bool AllowDirty, bool AcceptRisky = false, bool SingleCommit = false);
+
+    // With SingleCommit, applied changes are collected here and committed once at the end.
+    private readonly List<string> _pendingPaths = [];
+    private int _pendingSteps;
+    private bool _singleCommit;
 
     public sealed record Summary(int Applied, int Skipped, int NotAutomated, int NothingToDo, int Waiting, bool Quit,
         List<string> BuildsOk, List<string> BuildsWithErrors, List<string> TestsOk, List<string> TestsFailing);
@@ -35,7 +40,16 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
         }
         output.WriteLine();
 
+        _singleCommit = settings.SingleCommit;
         var summary = Walk(analysis, plan, settings, root, git);
+        if (_singleCommit && git is not null && _pendingSteps > 0)
+        {
+            var message = $"dotnet-lift: upgrade to {plan.TargetFramework} ({_pendingSteps} step{(_pendingSteps == 1 ? "" : "s")})";
+            output.WriteLine();
+            output.WriteLine(git.Commit(_pendingPaths.Distinct(StringComparer.OrdinalIgnoreCase), message)
+                ? $"✓ Committed all changes as one commit: \"{message}\"."
+                : "Nothing to commit: git ignores every file the steps touched.");
+        }
 
         output.WriteLine();
         output.WriteLine(summary.Quit ? "Stopped." : "Done.");
@@ -54,7 +68,7 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
                              (summary.TestsOk.Count > 0 ? $"passing: {string.Join(", ", summary.TestsOk)}" : "none passing yet") +
                              (summary.TestsFailing.Count > 0 ? $"; failing: {string.Join(", ", summary.TestsFailing)}" : ""));
         }
-        if (summary.Applied > 0 && git is not null)
+        if (summary.Applied > 0 && git is not null && !_singleCommit)
         {
             output.WriteLine("Each applied step is a separate commit: `git log --oneline` shows them, `git revert <sha>` undoes one.");
         }
@@ -240,6 +254,14 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
 
     private void Commit(GitRepository? git, IReadOnlyList<FileChange> changes, string message)
     {
+        if (git is not null && _singleCommit)
+        {
+            _pendingPaths.AddRange(changes.SelectMany(c => c.Paths));
+            _pendingSteps++;
+            output.WriteLine("  ✓ Applied (committed with the others at the end).");
+            return;
+        }
+
         if (git is not null)
         {
             output.WriteLine(git.Commit(changes.SelectMany(c => c.Paths), message)
