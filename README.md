@@ -184,6 +184,26 @@ The SDK-style conversion keeps behaviour: the project still targets the same .NE
 2. While the web app is still on .NET Framework, libraries are multi-targeted (`net48;net10.0`) so the solution keeps building throughout.
 3. Each step is marked **Automatic** (rule-based), **Agent-assisted** (a code rewrite you approve) or **Manual**, with a risk level raised to *High* whenever a blocker is involved.
 
+### Migration profile
+
+```console
+$ dotnet-lift init        # writes dotnet-lift.json next to the solution
+```
+
+The team's decisions live in `dotnet-lift.json`, committed with the code, so every developer and every run converts the same way:
+
+```jsonc
+{
+  "target": "net10.0",
+  "multiTarget": "never",     // auto (default): multi-target while a .NET Framework web app uses the library; always; never
+  "commits": "single",        // step (default): one commit per step; single: one commit for the conversion
+  "codePage": 1254,           // what Encoding.Default meant on your servers
+  "projects": { "MyCompany.Shared": { "multiTarget": "always" }, "*.Tests": { "multiTarget": "never" } }
+}
+```
+
+`analyze` and `upgrade` use the nearest `dotnet-lift.json` at or above the path (or `--profile <file>`). Unknown settings and invalid values stop the run with a clear message instead of being ignored.
+
 ### Central Package Management
 
 ```console
