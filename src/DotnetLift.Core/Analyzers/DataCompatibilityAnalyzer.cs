@@ -19,8 +19,8 @@ public sealed partial class DataCompatibilityAnalyzer : IAnalyzer
     public const string Category = "Data compatibility";
 
     // Code pages modern .NET has without CodePagesEncodingProvider.
-    private static readonly HashSet<int> BuiltInCodePages = [1200, 1201, 12000, 12001, 20127, 28591, 65000, 65001];
-    private static readonly HashSet<string> BuiltInEncodingNames = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<int> BuiltInCodePages = [1200, 1201, 12000, 12001, 20127, 28591, 65000, 65001];
+    internal static readonly HashSet<string> BuiltInEncodingNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "utf-8", "utf8", "utf-16", "utf-16le", "utf-16be", "unicode", "utf-32", "utf-32le", "utf-32be",
         "us-ascii", "ascii", "iso-8859-1", "latin1", "utf-7",
@@ -126,7 +126,7 @@ public sealed partial class DataCompatibilityAnalyzer : IAnalyzer
         return findings;
     }
 
-    private static bool IsEncodingType(ExpressionSyntax e) =>
+    internal static bool IsEncodingType(ExpressionSyntax e) =>
         e.ToString().Replace(" ", "") is "Encoding" or "System.Text.Encoding" or "global::System.Text.Encoding";
 
     private static bool IsUtf8(ExpressionSyntax e)
