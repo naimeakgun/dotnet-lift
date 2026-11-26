@@ -11,8 +11,9 @@ namespace DotnetLift.Core.Planning;
 /// </summary>
 public static class UpgradePlanner
 {
-    public static UpgradePlan Create(AnalysisResult analysis)
+    public static UpgradePlan Create(AnalysisResult analysis, MigrationProfile? profile = null)
     {
+        profile ??= MigrationProfile.Default;
         var order = DependencyOrder(analysis.Solution);
         var steps = new List<UpgradeStep>();
         var webProjectsStillOnFramework = order.Any(p => p.IsWeb && IsFramework(p));
@@ -41,7 +42,13 @@ public static class UpgradePlanner
                         string.Equals(Path.GetFullPath(r), Path.GetFullPath(project.FullPath), StringComparison.OrdinalIgnoreCase)))
                     .Select(p => p.Name)
                     .ToList();
-                AddLibrarySteps(builder, project, analysis.TargetFramework, webProjectsStillOnFramework, hosts, packagesConfigConsumers);
+                var multiTarget = profile.MultiTargetFor(project.Name) switch
+                {
+                    MultiTargetMode.Always => true,
+                    MultiTargetMode.Never => false,
+                    _ => webProjectsStillOnFramework,
+                };
+                AddLibrarySteps(builder, project, analysis.TargetFramework, multiTarget, hosts, packagesConfigConsumers);
             }
         }
 
@@ -100,12 +107,15 @@ public static class UpgradePlanner
                 f => f.Message.StartsWith("EntityFramework ") || f.Category == "Entity Framework");
         }
 
-        var current = SdkStyleConversion.ToTfm(p.TargetFramework);
+        // The .NET Framework part of the current target(s): "v4.7.2" → net472, "net48;net10.0" → net48.
+        var current = SdkStyleConversion.ToTfm(p.TargetFramework)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(ProjectFormatAnalyzer.IsNetFramework) ?? "net48";
         var tfm = consumedByFrameworkApp ? $"{current};{target}" : target;
         b.Add("retarget", $"Retarget to {tfm}",
             consumedByFrameworkApp
-                ? $"Multi-target {current} and {target}: the .NET Framework web project keeps working while it is being migrated, and the library is ready for the new one. Framework-only references are limited to {current}."
-                : $"Change the target framework to {target}.",
+                ? $"Multi-target {current} and {target}: code that still runs on .NET Framework keeps working while it is being migrated, and the library is ready for the new one. Framework-only references are limited to {current}."
+                : $"Change the target framework to {target} only. Framework-only references are removed; anything that stays on .NET Framework uses the library's last .NET Framework build (for example its last package).",
             StepMode.Automatic, Risk.Medium, f => f.Category == "Target framework", argument: tfm);
 
         if (b.Has(f => f.Message.StartsWith("HttpRuntime.Cache")))
