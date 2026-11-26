@@ -54,6 +54,23 @@ jobs:
           dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net10.0
           dotnet build LegacyShop.Data/LegacyShop.Data.csproj -f net10.0
 
+      - name: Upgrade the sample with a migration profile (code page 1254), then build both targets
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          cp -r samples/LegacyShop "$RUNNER_TEMP/Profiled"
+          cd "$RUNNER_TEMP/Profiled"
+          printf '{ "target": "net10.0", "codePage": 1254, "commits": "single" }\n' > dotnet-lift.json
+          git init -q
+          git config user.name ci
+          git config user.email ci@example.com
+          git add -A && git commit -qm "legacy sample"
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes --accept-risky
+          git log --oneline
+          cat LegacyShop.Core/Services/PasswordHasher.cs
+          dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net48
+          dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net10.0
+
       - name: Upload sample report
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4

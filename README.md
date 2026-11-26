@@ -202,6 +202,8 @@ The team's decisions live in `dotnet-lift.json`, committed with the code, so eve
 }
 ```
 
+With `codePage` set, `upgrade` adds a step that sends `Encoding.Default` / `Encoding.GetEncoding(0)` to that code page and legacy code pages through a small generated `LegacyEncoding` helper (it registers `CodePagesEncodingProvider` on modern .NET and compiles as C# 7.3 for .NET Framework), so text that is hashed or stored keeps its bytes. CI upgrades the sample with such a profile and builds the result for net48 and net10.0.
+
 `analyze` and `upgrade` use the nearest `dotnet-lift.json` at or above the path (or `--profile <file>`). Unknown settings and invalid values stop the run with a clear message instead of being ignored.
 
 ### Central Package Management
