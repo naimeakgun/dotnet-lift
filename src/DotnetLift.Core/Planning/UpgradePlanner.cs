@@ -48,7 +48,7 @@ public static class UpgradePlanner
                     MultiTargetMode.Never => false,
                     _ => webProjectsStillOnFramework,
                 };
-                AddLibrarySteps(builder, project, analysis.TargetFramework, multiTarget, hosts, packagesConfigConsumers);
+                AddLibrarySteps(builder, project, analysis.TargetFramework, multiTarget, hosts, packagesConfigConsumers, profile.CodePage);
             }
         }
 
@@ -56,7 +56,7 @@ public static class UpgradePlanner
     }
 
     private static void AddLibrarySteps(StepBuilder b, ProjectInfo p, string target, bool consumedByFrameworkApp,
-        IReadOnlyList<string> hostStartupFiles, IReadOnlyList<string> packagesConfigConsumers)
+        IReadOnlyList<string> hostStartupFiles, IReadOnlyList<string> packagesConfigConsumers, int? codePage)
     {
         if (p.HasPackagesConfig)
         {
@@ -137,6 +137,19 @@ public static class UpgradePlanner
                 StepMode.Automatic, Risk.Medium,
                 f => f.Message.StartsWith("HttpContext.Current") || (f.Category == "Dependency" && f.Message.Contains("System.Web")),
                 argument: string.Join(";", hostStartupFiles));
+        }
+
+        static bool IsCodePageFinding(Finding f) =>
+            f.Category == DataCompatibilityAnalyzer.Category
+            && (f.Message.StartsWith("Encoding.Default") || f.Message.StartsWith("Encoding.GetEncoding("));
+
+        if (codePage is { } page && b.Has(IsCodePageFinding))
+        {
+            b.Add("explicit-code-page", $"Use code page {page} instead of Encoding.Default",
+                $"Encoding.Default and Encoding.GetEncoding(0) become LegacyEncoding.Default (code page {page}, as set in {MigrationProfile.FileName}), " +
+                "and legacy code pages go through LegacyEncoding.Get, which registers CodePagesEncodingProvider on modern .NET. " +
+                "Text that is hashed or stored keeps producing the same bytes; confirm it with golden vectors that contain non-ASCII characters.",
+                StepMode.Automatic, Risk.Medium, IsCodePageFinding, argument: page.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         if (b.Has(IsBinaryFormatter))
