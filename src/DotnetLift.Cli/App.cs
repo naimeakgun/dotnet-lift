@@ -39,6 +39,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
                 "init" => Init(options),
                 "refs" => new RefsCommand(_prompt, _out).Run(options),
                 "cleanup" => new CleanupCommand(_prompt, _out).Run(options),
+                "add-tests" => new AddTestsCommand(_prompt, _out).Run(options, LoadProfile(options)),
                 "version" => PrintVersion(),
                 "help" => PrintHelp(),
                 _ => Unknown(options.Command),
@@ -219,6 +220,7 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
               dotnet-lift cpm [path] [options]       Move package versions into Directory.Packages.props
               dotnet-lift refs [path] [options]      Turn DLL file references (HintPath) into PackageReferences
               dotnet-lift cleanup [path] [options]   Remove unused legacy references and Visual Studio migration backups
+              dotnet-lift add-tests [path] -p <name> Add an MSTest project for a library (test-first migration)
 
             Arguments:
               path                 A .sln, a .csproj or a folder (default: current folder)
@@ -229,14 +231,15 @@ public sealed class App(TextReader input, TextWriter output, bool interactive, I
               -o, --output <file>  Where to write the Markdown report (default: lift-report.md next to the solution)
                   --no-report      Print the summary only
               -y, --yes            Do not ask questions; use defaults (upgrade: apply every automatic step)
-                  --dry-run        upgrade, cpm, refs, cleanup: show what would change, write nothing
-                  --allow-dirty    upgrade, cpm, refs, cleanup: run even if the git working tree has uncommitted changes
+                  --dry-run        upgrade, cpm, refs, cleanup, add-tests: show what would change, write nothing
+                  --allow-dirty    upgrade, cpm, refs, cleanup, add-tests: run even if the git working tree has uncommitted changes
                   --map <file>     refs: assembly → package map (default: dotnet-lift.packages.json next to the solution)
                   --init-map       refs: write a starting map from the DLLs found, then stop
                   --by-name        refs: assume package id = assembly name for DLLs the map does not mention
                   --remove-project <name>
                                    cleanup: remove that project from the .sln instead, after listing what depends
                                    on it (refused while another project still references it)
+              -p, --project <name> add-tests: the project to write tests for; the test project is <name>.Tests
                   --accept-risky   upgrade: also apply steps that change behaviour (e.g. a serialization format)
                                    without asking; without it they always ask, and --yes skips them
               -h, --help           Show this help

@@ -16,6 +16,7 @@ public sealed class Options
     public bool InitMap { get; private set; }
     public bool ByName { get; private set; }
     public string? RemoveProject { get; private set; }
+    public string? Project { get; private set; }
 
     public static readonly string[] SupportedTargets = ["net10.0", "net11.0"];
 
@@ -71,6 +72,9 @@ public sealed class Options
                     break;
                 case "--remove-project":
                     o.RemoveProject = Next(args, ref i, a);
+                    break;
+                case "-p" or "--project":
+                    o.Project = Next(args, ref i, a);
                     break;
                 default:
                     if (a.StartsWith('-'))
