@@ -102,7 +102,7 @@ public static partial class ProjectRemoval
     }
 
     /// <summary>The &lt;AssemblyName&gt; of the project, or its file name when it has none.</summary>
-    private static string AssemblyName(ProjectInfo project)
+    internal static string AssemblyName(ProjectInfo project)
     {
         try
         {
