@@ -53,6 +53,26 @@ jobs:
           # After the upgrade both libraries are free of System.Web: they must build for net10.0 as well.
           dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net10.0
           dotnet build LegacyShop.Data/LegacyShop.Data.csproj -f net10.0
+          # Test-first workflow: a scaffolded MSTest project follows the library's targets and runs on the new one.
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- add-tests . --project LegacyShop.Core --yes --allow-dirty
+          git log --oneline -1
+          cat LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj
+          dotnet build LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net48
+          dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net10.0
+
+      - name: Upgrade the sample, add a test project and run its tests on net48 and net10.0
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cp -r samples/LegacyShop "$RUNNER_TEMP/WinTests"
+          cd "$RUNNER_TEMP/WinTests"
+          git init -q
+          git config user.name ci
+          git config user.email ci@example.com
+          git add -A && git commit -qm "legacy sample"
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes --accept-risky
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- add-tests . --project LegacyShop.Core --yes --allow-dirty
+          dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj
 
       - name: Upgrade the sample with a migration profile (code page 1254), then build both targets
         if: matrix.os == 'ubuntu-latest'
