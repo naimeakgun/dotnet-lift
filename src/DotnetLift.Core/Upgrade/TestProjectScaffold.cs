@@ -11,7 +11,7 @@ namespace DotnetLift.Core.Upgrade;
 /// <param name="Name">The test project's name, e.g. Acme.Core.Tests.</param>
 /// <param name="ProjectPath">Full path of the new .csproj.</param>
 /// <param name="TargetFrameworks">What the test project targets: the library's own targets, so the tests run wherever the library does.</param>
-/// <param name="Changes">The new project file, a first test, the edited .sln and, under CPM, Directory.Packages.props.</param>
+/// <param name="Changes">The new project file, a first test, the edited .sln, the golden-vector helper with its golden/ folder and, under CPM, Directory.Packages.props.</param>
 /// <param name="Notes">What the user should know before writing tests.</param>
 public sealed record TestScaffoldPlan(
     ProjectInfo Project,
@@ -74,6 +74,8 @@ public static partial class TestProjectScaffold
             new(projectPath, ProjectFile(targets, Packages(solution, central), reference, central)),
             new(Path.Combine(directory, FirstTestFileName), FirstTest(name, ProjectRemoval.AssemblyName(project))),
             new(solution.Path, AddToSolution(File.ReadAllText(solution.Path), solution.Path, project, name, projectPath, GuidFor(name))),
+            new(Path.Combine(directory, GoldenVectorSource.FileName), GoldenVectorSource.Source(Namespace(name))),
+            new(Path.Combine(directory, GoldenVectorSource.FolderName, ".gitattributes"), GoldenVectorSource.GitAttributes),
         };
         PackageReferences.AddIfChanged(changes, central);
 
@@ -177,6 +179,11 @@ public static partial class TestProjectScaffold
         sb.AppendLine($"    <ProjectReference Include=\"{reference}\" />");
         sb.AppendLine("  </ItemGroup>");
         sb.AppendLine();
+        sb.AppendLine("  <!-- Where GoldenVector finds golden/ when the tests run. -->");
+        sb.AppendLine("  <ItemGroup>");
+        sb.AppendLine(GoldenVectorSource.ProjectItem.ReplaceLineEndings("\n").TrimEnd('\n').Replace("\n", Environment.NewLine));
+        sb.AppendLine("  </ItemGroup>");
+        sb.AppendLine();
         sb.AppendLine("</Project>");
         return sb.ToString();
     }
@@ -196,6 +203,9 @@ public static partial class TestProjectScaffold
             "    // run them there (`dotnet test`), and keep them unchanged while the library moves. When it targets",
             "    // modern .NET too, the same tests run on both; anything that passes on one and fails on the other",
             "    // is a difference to look at before shipping.",
+            "    //",
+            "    // For outputs that must stay byte for byte the same (hashes, encoded bytes, serialized data),",
+            "    // use GoldenVector.Check(\"name\", value): recorded on .NET Framework, compared on modern .NET.",
             "    [TestClass]",
             "    public class LibraryLoadTests",
             "    {",

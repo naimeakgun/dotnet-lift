@@ -77,10 +77,12 @@ public class AddTestsTests
         Assert.Equal(Path.Combine(dir, "LegacyShop.Core.Tests", "LegacyShop.Core.Tests.csproj"), plan.ProjectPath);
         Assert.Equal("net48", plan.TargetFrameworks); // the library is still a .NET Framework 4.8 project
         Assert.Contains(plan.Notes, n => n.Contains("`dotnet-lift upgrade` retargets the test project after the library"));
-        Assert.Equal(3, plan.Changes.Count);
+        Assert.Equal(5, plan.Changes.Count);
 
         var project = plan.Changes[0].NewContent!;
         Assert.Contains("<TargetFramework>net48</TargetFramework>", project);
+        Assert.Contains($"<_Parameter1>{GoldenVectorSource.MetadataKey}</_Parameter1>", project);
+        Assert.Contains("<_Parameter2>$(MSBuildProjectDirectory)</_Parameter2>", project);
         Assert.Contains("<IsTestProject>true</IsTestProject>", project);
         Assert.Contains($"<PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdkVersion}\" />", project);
         Assert.Contains($"<PackageReference Include=\"MSTest.TestAdapter\" Version=\"{TestPackages.MSTestVersion}\" />", project);
@@ -91,6 +93,12 @@ public class AddTestsTests
         Assert.Contains("namespace LegacyShop.Core.Tests", test);
         Assert.Contains("Assembly.Load(new AssemblyName(\"LegacyShop.Core\"))", test);
         Assert.DoesNotContain("namespace LegacyShop.Core.Tests;", test); // block namespace: C# 7.3 for net48
+        Assert.Contains("GoldenVector.Check", test);
+
+        var helper = Assert.Single(plan.Changes, c => c.Path.EndsWith(GoldenVectorSource.FileName, StringComparison.Ordinal));
+        Assert.Contains("namespace LegacyShop.Core.Tests", helper.NewContent);
+        var attributes = Assert.Single(plan.Changes, c => c.Path == Path.Combine(dir, "LegacyShop.Core.Tests", "golden", ".gitattributes"));
+        Assert.Contains("* -text", attributes.NewContent);
 
         FileChange.ApplyAll(plan.Changes);
 
