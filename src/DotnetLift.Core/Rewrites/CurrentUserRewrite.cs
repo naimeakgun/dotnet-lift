@@ -14,7 +14,7 @@ namespace DotnetLift.Core.Rewrites;
 public static class CurrentUserRewrite
 {
     // System.Web types that keep `using System.Web;` necessary if they are still used.
-    private static readonly HashSet<string> SystemWebTypes =
+    internal static readonly HashSet<string> SystemWebTypes =
         ["HttpContext", "HttpRuntime", "HttpRequest", "HttpResponse", "HttpCookie", "HttpServerUtility", "HttpUtility",
          "HttpContextBase", "HttpRequestBase", "HttpApplication", "VirtualPathUtility", "HttpException", "IHttpModule", "IHttpHandler"];
 
@@ -179,10 +179,10 @@ public static class CurrentUserRewrite
     private static bool InsideNamespace(CompilationUnitSyntax root, string ns) =>
         root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().Any(n => n.Name.ToString() == ns);
 
-    private static bool Imports(CompilationUnitSyntax root, string ns) =>
+    internal static bool Imports(CompilationUnitSyntax root, string ns) =>
         root.DescendantNodes().OfType<UsingDirectiveSyntax>().Any(u => u.Name?.ToString() == ns && u.Alias is null);
 
-    private static bool IsHttpContextCurrent(MemberAccessExpressionSyntax m, bool allowUnqualified)
+    internal static bool IsHttpContextCurrent(MemberAccessExpressionSyntax m, bool allowUnqualified)
     {
         if (m.Name.Identifier.Text != "Current")
         {
@@ -192,7 +192,7 @@ public static class CurrentUserRewrite
         return allowUnqualified && target == "HttpContext" || target is "System.Web.HttpContext" or "global::System.Web.HttpContext";
     }
 
-    private static bool IsNullLiteral(ExpressionSyntax e) => e.IsKind(SyntaxKind.NullLiteralExpression);
+    internal static bool IsNullLiteral(ExpressionSyntax e) => e.IsKind(SyntaxKind.NullLiteralExpression);
 
     /// <summary>`X != null &amp;&amp; X != null` (left behind when two different checks became the same one) → `X != null`.</summary>
     private sealed class DuplicateConditionRemover : CSharpSyntaxRewriter

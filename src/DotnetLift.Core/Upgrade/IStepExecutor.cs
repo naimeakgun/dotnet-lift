@@ -43,6 +43,7 @@ public static class StepExecutors
         new Retarget(),
         new ApiRewrites(),
         new CurrentUserProvider(),
+        new RequestContextMigration(),
         new ExplicitCodePage(),
         new BinaryFormatterToJson(),
         new BinaryFormatterCompatibility(),

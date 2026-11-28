@@ -76,7 +76,7 @@ public sealed class MigrationProfile
     public const string FileName = "dotnet-lift.json";
 
     private static readonly string[] SupportedTargets = ["net10.0", "net11.0"];
-    private static readonly string[] TopLevelKeys = ["target", "multiTarget", "commits", "codePage", "binaryFormatter", "sqlClient", "projects"];
+    private static readonly string[] TopLevelKeys = ["target", "multiTarget", "commits", "codePage", "binaryFormatter", "sqlClient", "requestContext", "projects"];
     private static readonly string[] ProjectKeys = ["multiTarget", "binaryFormatter"];
 
     /// <summary>One entry under "projects": a name pattern and the settings it overrides (null = not set there).</summary>
@@ -117,6 +117,9 @@ public sealed class MigrationProfile
 
     /// <summary>Whether System.Data.SqlClient code moves to Microsoft.Data.SqlClient, and whether that asks first.</summary>
     public SqlClientStrategy SqlClient { get; }
+
+    /// <summary>The team's replacements for HttpContext.Current members, or null to use the generated CurrentUser provider.</summary>
+    public RequestContextMap? RequestContext { get; private set; }
 
     public bool IsDefault => Path is null;
 
@@ -229,7 +232,10 @@ public sealed class MigrationProfile
                 }
             }
 
-            return new MigrationProfile(System.IO.Path.GetFullPath(path), target, multiTarget, commits, codePage, binaryFormatter, sqlClient, projects);
+            return new MigrationProfile(System.IO.Path.GetFullPath(path), target, multiTarget, commits, codePage, binaryFormatter, sqlClient, projects)
+            {
+                RequestContext = root.TryGetProperty("requestContext", out var rc) ? RequestContextMap.Read(rc, name) : null,
+            };
         }
     }
 
@@ -265,6 +271,16 @@ public sealed class MigrationProfile
           // keep:      stay on System.Data.SqlClient
           "sqlClient": "ask",
 
+          // Your own request abstractions instead of HttpContext.Current (remove to get a generated CurrentUser provider).
+          // Each value is the C# expression that replaces HttpContext.Current.<Member>; members you leave out keep a file unchanged.
+          // "requestContext": {
+          //   "user": "UserContext.Current.Principal",
+          //   "items": "RequestContext.Current.Items",
+          //   "session": "SessionAccessor.Current",
+          //   "context": "RequestContext.Current",          // replaces HttpContext.Current in null checks
+          //   "usings": ["MyCompany.Web.Abstractions"]
+          // },
+
           // Per-project exceptions, by name; "*" is a wildcard.
           "projects": {
             // "MyCompany.Shared": { "multiTarget": "always" },
@@ -279,6 +295,7 @@ public sealed class MigrationProfile
         (CodePage is { } page ? $", codePage: {page}" : "") +
         (BinaryFormatter != BinaryFormatterStrategy.Json ? $", binaryFormatter: {BinaryFormatter.ToString().ToLowerInvariant()}" : "") +
         (SqlClient != SqlClientStrategy.Ask ? $", sqlClient: {SqlClient.ToString().ToLowerInvariant()}" : "") +
+        (RequestContext is not null ? $", requestContext: {string.Join("/", RequestContext.Members.Keys.Select(k => k.ToLowerInvariant()))}" : "") +
         (_projects.Count > 0 ? $", {_projects.Count} project exception(s)" : "");
 
     private static void CheckKeys(JsonElement element, string[] allowed, string where)
@@ -306,4 +323,90 @@ public sealed class MigrationProfile
 
     private static Regex Wildcard(string pattern) =>
         new("^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$", RegexOptions.IgnoreCase);
+}
+
+/// <summary>
+/// "requestContext" in dotnet-lift.json: what replaces each HttpContext.Current member in libraries, as C# expressions of
+/// the team's own abstractions (e.g. "user": "UserContext.Current.Principal"), and the namespaces they need.
+/// </summary>
+public sealed class RequestContextMap
+{
+    /// <summary>Profile key → HttpContext member name.</summary>
+    public static readonly IReadOnlyDictionary<string, string> MemberKeys = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["user"] = "User",
+        ["items"] = "Items",
+        ["session"] = "Session",
+        ["request"] = "Request",
+        ["response"] = "Response",
+        ["server"] = "Server",
+        ["cache"] = "Cache",
+    };
+
+    public RequestContextMap(IReadOnlyDictionary<string, string> members, string? context, IReadOnlyList<string> usings)
+    {
+        Members = members;
+        Context = context;
+        Usings = usings;
+    }
+
+    /// <summary>HttpContext member name (User, Items, …) → replacement expression.</summary>
+    public IReadOnlyDictionary<string, string> Members { get; }
+
+    /// <summary>Replaces HttpContext.Current itself in null checks; null = files with such checks are left alone.</summary>
+    public string? Context { get; }
+
+    public IReadOnlyList<string> Usings { get; }
+
+    internal static RequestContextMap Read(JsonElement e, string file)
+    {
+        if (e.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException($"{file}: \"requestContext\" must be an object, e.g. {{ \"user\": \"UserContext.Current.Principal\" }}.");
+        }
+
+        var members = new Dictionary<string, string>(StringComparer.Ordinal);
+        string? context = null;
+        var usings = new List<string>();
+        foreach (var property in e.EnumerateObject())
+        {
+            var where = $"{file}: requestContext.{property.Name}";
+            if (property.Name == "usings")
+            {
+                if (property.Value.ValueKind != JsonValueKind.Array || property.Value.EnumerateArray().Any(u => u.ValueKind != JsonValueKind.String))
+                {
+                    throw new InvalidDataException($"{where} must be an array of namespaces.");
+                }
+                usings.AddRange(property.Value.EnumerateArray().Select(u => u.GetString()!.Trim()).Where(u => u.Length > 0));
+                continue;
+            }
+
+            if (property.Name != "context" && !MemberKeys.ContainsKey(property.Name))
+            {
+                throw new InvalidDataException(
+                    $"{file}: unknown setting requestContext.{property.Name}. Known: {string.Join(", ", MemberKeys.Keys)}, context, usings.");
+            }
+            var expression = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString()!.Trim() : "";
+            var parsed = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseExpression(expression);
+            if (expression.Length == 0 || parsed.ContainsDiagnostics || parsed.ToString() != expression)
+            {
+                throw new InvalidDataException($"{where} must be a C# expression, e.g. \"UserContext.Current.Principal\".");
+            }
+
+            if (property.Name == "context")
+            {
+                context = expression;
+            }
+            else
+            {
+                members[MemberKeys[property.Name]] = expression;
+            }
+        }
+
+        if (members.Count == 0)
+        {
+            throw new InvalidDataException($"{file}: \"requestContext\" needs at least one member (user, items, session, request, response, server, cache).");
+        }
+        return new RequestContextMap(members, context, usings);
+    }
 }

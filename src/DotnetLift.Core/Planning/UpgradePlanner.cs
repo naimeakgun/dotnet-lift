@@ -54,7 +54,7 @@ public static class UpgradePlanner
                     .Select(p => p.Name)
                     .ToList();
                 AddLibrarySteps(builder, project, analysis.TargetFramework, multiTarget, hosts, packagesConfigConsumers, consumers,
-                    profile.CodePage, profile.BinaryFormatterFor(project.Name), profile.SqlClient);
+                    profile.CodePage, profile.BinaryFormatterFor(project.Name), profile.SqlClient, profile);
             }
         }
 
@@ -63,7 +63,7 @@ public static class UpgradePlanner
 
     private static void AddLibrarySteps(StepBuilder b, ProjectInfo p, string target, bool consumedByFrameworkApp,
         IReadOnlyList<string> hostStartupFiles, IReadOnlyList<string> packagesConfigConsumers, IReadOnlyList<string> consumers,
-        int? codePage, BinaryFormatterStrategy binaryFormatter, SqlClientStrategy sqlClient = SqlClientStrategy.Ask)
+        int? codePage, BinaryFormatterStrategy binaryFormatter, SqlClientStrategy sqlClient = SqlClientStrategy.Ask, MigrationProfile? profile = null)
     {
         if (p.HasPackagesConfig)
         {
@@ -153,7 +153,20 @@ public static class UpgradePlanner
                 StepMode.Automatic, Risk.Low, f => f.Message.StartsWith("HttpRuntime.Cache"));
         }
 
-        if (b.Has(f => f.Message.StartsWith("HttpContext.Current")))
+        if (profile?.RequestContext is { } map && profile.Path is { } profilePath && b.Has(f => f.Message.StartsWith("HttpContext.Current")))
+        {
+            var mapped = string.Join(", ", map.Members.Keys.Select(k => $"HttpContext.Current.{k} → {map.Members[k]}"));
+            b.Add("request-context", "Replace HttpContext.Current with the team's request abstractions",
+                $"As set in {MigrationProfile.FileName} (\"requestContext\"): {mapped}" +
+                (map.Context is { } context ? $"; null checks on HttpContext.Current use {context}" : "") +
+                (map.Usings.Count > 0 ? $"; adds using {string.Join(", ", map.Usings)}" : "") +
+                ". A file that uses a member without a mapping is left as it is and stays in the report. " +
+                "The library must reference the project or package that defines these types; the System.Web reference goes when nothing needs it.",
+                StepMode.Automatic, Risk.Medium,
+                f => f.Message.StartsWith("HttpContext.Current") || (f.Category == "Dependency" && f.Message.Contains("System.Web")),
+                argument: profilePath);
+        }
+        else if (b.Has(f => f.Message.StartsWith("HttpContext.Current")))
         {
             var wiring = hostStartupFiles.Count > 0
                 ? $" {string.Join(", ", hostStartupFiles.Select(f => Path.GetFileName(f)).Distinct())} of the web app sets the provider, so behaviour stays the same."
