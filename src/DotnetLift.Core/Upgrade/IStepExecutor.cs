@@ -45,6 +45,7 @@ public static class StepExecutors
         new CurrentUserProvider(),
         new RequestContextMigration(),
         new ExplicitCodePage(),
+        new ExactRewrites(),
         new BinaryFormatterToJson(),
         new BinaryFormatterCompatibility(),
         new SqlClientMigration(),

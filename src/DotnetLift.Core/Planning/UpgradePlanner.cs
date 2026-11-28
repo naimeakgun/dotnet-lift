@@ -1,6 +1,7 @@
 using DotnetLift.Core.Analyzers;
 using DotnetLift.Core.Loading;
 using DotnetLift.Core.Model;
+using DotnetLift.Core.Rewrites;
 using DotnetLift.Core.Upgrade;
 
 namespace DotnetLift.Core.Planning;
@@ -115,6 +116,18 @@ public static class UpgradePlanner
         }
 
         AddPackageUpgrades(b);
+
+        static bool IsExact(Finding f) =>
+            f.Message.StartsWith("CallContext", StringComparison.Ordinal) || f.Message.StartsWith("FormsAuthentication", StringComparison.Ordinal);
+
+        if (b.Has(IsExact) && p.SourceFiles.Any(f => LegacyApiRewrite.Rewrite(File.ReadAllText(f), "X") is not null))
+        {
+            b.Add("exact-rewrites", "Rewrite CallContext and FormsAuthentication hashing to equivalent helpers",
+                "CallContext.LogicalSetData / LogicalGetData / FreeNamedDataSlot become LogicalCallContext (AsyncLocal: values flow into tasks and awaits the same way), " +
+                "and FormsAuthentication.HashPasswordForStoringInConfigFile(p, \"SHA1\" | \"MD5\") becomes LegacyPasswordHash (the same uppercase hex, so stored hashes keep matching). " +
+                "Both helpers are generated into Infrastructure/ and build for .NET Framework too. CallContext.SetData / GetData and other hash formats stay in the report.",
+                StepMode.Automatic, Risk.Low, IsExact);
+        }
 
         static bool IsSqlClient(Finding f) => f.Category == SqlClientAnalyzer.Category;
 
