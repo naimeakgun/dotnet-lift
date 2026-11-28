@@ -81,7 +81,8 @@ public class GoldenVectorTests
         Assert.Equal("GoldenVectorException", error.GetType().Name);
         Assert.Contains("Golden vector hash.txt differs", error.Message);
         Assert.Contains("first difference at byte 8", error.Message); // "İsmail:" is 8 bytes in UTF-8, then ş (C5 9F) vs s
-        Assert.Contains(@"expected text: ""İsmail:şifre\u000d\u000a""", error.Message);
+        Assert.Contains("expected text: \"\\u0130smail:\\u015fifre\\u000d\\u000a\"", error.Message); // İ, ş and CR LF escaped
+        Assert.Contains("actual text:   \"\\u0130smail:sifre\\u000d\\u000a\"", error.Message);
 
         var changed = Assert.ThrowsAny<Exception>(() => Check(modern, "bytes", new byte[] { 0xDD, 0x3F, 0x00 }));
         Assert.Contains("expected: DD FE 00", changed.Message);
