@@ -154,7 +154,7 @@ public static class UpgradePlanner
                 (cache.Usings.Count > 0 ? $"; adds using {string.Join(", ", cache.Usings)}" : "") +
                 ". Calls without a template (and Insert with dependencies, priorities or callbacks) stay as they are and in the report. " +
                 "The library must reference the project or package that defines the cache API.",
-                StepMode.Automatic, Risk.Medium, f => f.Message.StartsWith("HttpRuntime.Cache"), argument: cacheProfile);
+                StepMode.Automatic, Risk.Medium, f => f.Message.StartsWith("HttpRuntime.Cache"), argument: ApiRewrites.ProfilePrefix + cacheProfile);
         }
         else if (b.Has(f => f.Message.StartsWith("HttpRuntime.Cache")))
         {

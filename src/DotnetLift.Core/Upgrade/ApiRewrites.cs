@@ -15,6 +15,9 @@ public sealed class ApiRewrites : IStepExecutor
 {
     public const string RuntimeCachingPackageVersion = "10.0.0";
 
+    /// <summary>Step argument prefix: "profile:&lt;path&gt;" means use the profile's cache templates.</summary>
+    public const string ProfilePrefix = "profile:";
+
     public string StepId => "api-rewrites";
 
     public bool CanExecute(ProjectInfo project) => !project.IsWeb;
@@ -29,7 +32,9 @@ public sealed class ApiRewrites : IStepExecutor
         }
 
         // The profile's "cache" templates (step argument = profile path) replace MemoryCache.Default with the team's cache API.
-        var custom = step.Argument is { } profilePath ? MigrationProfile.Load(profilePath).Cache : null;
+        var custom = step.Argument is { } argument && argument.StartsWith(ProfilePrefix, StringComparison.Ordinal)
+            ? MigrationProfile.Load(argument[ProfilePrefix.Length..]).Cache
+            : null;
 
         foreach (var file in current.SourceFiles)
         {
