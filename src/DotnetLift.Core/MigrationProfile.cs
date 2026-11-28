@@ -26,6 +26,19 @@ public enum CommitMode
     Single,
 }
 
+/// <summary>What happens to BinaryFormatter code.</summary>
+public enum BinaryFormatterStrategy
+{
+    /// <summary>Rewrite to System.Text.Json (default; needs explicit approval because the serialized format changes). Fits caches and data that can be dropped.</summary>
+    Json,
+
+    /// <summary>
+    /// Keep BinaryFormatter: reference the System.Runtime.Serialization.Formatters compatibility package on modern .NET
+    /// and enable it, so data written by the old code stays readable until a planned data migration.
+    /// </summary>
+    Compatibility,
+}
+
 /// <summary>
 /// dotnet-lift.json: the team's decisions for a repository, so every developer (and every run) converts the same way.
 /// Without the file the tool keeps its defaults.
@@ -35,8 +48,10 @@ public enum CommitMode
 ///   "multiTarget": "never",              // auto | always | never
 ///   "commits": "single",                 // step | single
 ///   "codePage": 1254,                    // what Encoding.Default meant on your servers
+///   "binaryFormatter": "compatibility",  // json | compatibility
 ///   "projects": {
 ///     "MyCompany.Shared": { "multiTarget": "always" },
+///     "MyCompany.Caching": { "binaryFormatter": "json" },
 ///     "*.Tests": { "multiTarget": "never" }
 ///   }
 /// }
@@ -47,23 +62,28 @@ public sealed class MigrationProfile
     public const string FileName = "dotnet-lift.json";
 
     private static readonly string[] SupportedTargets = ["net10.0", "net11.0"];
-    private static readonly string[] TopLevelKeys = ["target", "multiTarget", "commits", "codePage", "projects"];
-    private static readonly string[] ProjectKeys = ["multiTarget"];
+    private static readonly string[] TopLevelKeys = ["target", "multiTarget", "commits", "codePage", "binaryFormatter", "projects"];
+    private static readonly string[] ProjectKeys = ["multiTarget", "binaryFormatter"];
 
-    private readonly List<(Regex Pattern, string Text, MultiTargetMode Mode)> _projects;
+    /// <summary>One entry under "projects": a name pattern and the settings it overrides (null = not set there).</summary>
+    private sealed record ProjectRule(Regex Pattern, MultiTargetMode? MultiTarget, BinaryFormatterStrategy? BinaryFormatter);
+
+    private readonly List<ProjectRule> _projects;
 
     private MigrationProfile(string? path, string? target, MultiTargetMode multiTarget, CommitMode commits, int? codePage,
-        List<(Regex, string, MultiTargetMode)> projects)
+        BinaryFormatterStrategy binaryFormatter, List<ProjectRule> projects)
     {
         Path = path;
         Target = target;
         MultiTarget = multiTarget;
         Commits = commits;
         CodePage = codePage;
+        BinaryFormatter = binaryFormatter;
         _projects = projects;
     }
 
-    public static MigrationProfile Default { get; } = new(null, null, MultiTargetMode.Auto, CommitMode.Step, null, []);
+    public static MigrationProfile Default { get; } =
+        new(null, null, MultiTargetMode.Auto, CommitMode.Step, null, BinaryFormatterStrategy.Json, []);
 
     /// <summary>The file this profile came from; null for the defaults.</summary>
     public string? Path { get; }
@@ -77,11 +97,18 @@ public sealed class MigrationProfile
     /// <summary>The code page `Encoding.Default` stood for on the old servers (e.g. 1254), if the team decided on one.</summary>
     public int? CodePage { get; }
 
+    /// <summary>What to do with BinaryFormatter code by default (json unless the team chose otherwise).</summary>
+    public BinaryFormatterStrategy BinaryFormatter { get; }
+
     public bool IsDefault => Path is null;
 
-    /// <summary>The setting for one project: the first matching entry under "projects", else the top-level value.</summary>
+    /// <summary>The setting for one project: the first matching entry under "projects" that sets it, else the top-level value.</summary>
     public MultiTargetMode MultiTargetFor(string projectName) =>
-        _projects.FirstOrDefault(p => p.Pattern.IsMatch(projectName)) is { Text: not null } match ? match.Mode : MultiTarget;
+        _projects.FirstOrDefault(p => p.MultiTarget is not null && p.Pattern.IsMatch(projectName))?.MultiTarget ?? MultiTarget;
+
+    /// <summary>The BinaryFormatter strategy for one project: the first matching entry under "projects" that sets it, else the top-level value.</summary>
+    public BinaryFormatterStrategy BinaryFormatterFor(string projectName) =>
+        _projects.FirstOrDefault(p => p.BinaryFormatter is not null && p.Pattern.IsMatch(projectName))?.BinaryFormatter ?? BinaryFormatter;
 
     /// <summary>The nearest dotnet-lift.json at or above the input (a .sln, .csproj or folder); the defaults when there is none.</summary>
     public static MigrationProfile Find(string inputPath)
@@ -149,7 +176,11 @@ public sealed class MigrationProfile
                 codePage = page;
             }
 
-            var projects = new List<(Regex, string, MultiTargetMode)>();
+            var binaryFormatter = root.TryGetProperty("binaryFormatter", out var bf)
+                ? ReadEnum<BinaryFormatterStrategy>(bf, "binaryFormatter", name)
+                : BinaryFormatterStrategy.Json;
+
+            var projects = new List<ProjectRule>();
             if (root.TryGetProperty("projects", out var p))
             {
                 if (p.ValueKind != JsonValueKind.Object)
@@ -163,14 +194,20 @@ public sealed class MigrationProfile
                         throw new InvalidDataException($"{name}: projects.\"{project.Name}\" must be an object.");
                     }
                     CheckKeys(project.Value, ProjectKeys, $"{name}: projects.\"{project.Name}\"");
-                    if (project.Value.TryGetProperty("multiTarget", out var pm))
+                    MultiTargetMode? projectMultiTarget = project.Value.TryGetProperty("multiTarget", out var pm)
+                        ? ReadEnum<MultiTargetMode>(pm, $"projects.\"{project.Name}\".multiTarget", name)
+                        : null;
+                    BinaryFormatterStrategy? projectBinaryFormatter = project.Value.TryGetProperty("binaryFormatter", out var pb)
+                        ? ReadEnum<BinaryFormatterStrategy>(pb, $"projects.\"{project.Name}\".binaryFormatter", name)
+                        : null;
+                    if (projectMultiTarget is not null || projectBinaryFormatter is not null)
                     {
-                        projects.Add((Wildcard(project.Name), project.Name, ReadEnum<MultiTargetMode>(pm, $"projects.\"{project.Name}\".multiTarget", name)));
+                        projects.Add(new ProjectRule(Wildcard(project.Name), projectMultiTarget, projectBinaryFormatter));
                     }
                 }
             }
 
-            return new MigrationProfile(System.IO.Path.GetFullPath(path), target, multiTarget, commits, codePage, projects);
+            return new MigrationProfile(System.IO.Path.GetFullPath(path), target, multiTarget, commits, codePage, binaryFormatter, projects);
         }
     }
 
@@ -195,9 +232,15 @@ public sealed class MigrationProfile
           // What Encoding.Default meant on your servers (e.g. 1254 for Turkish Windows); remove if unsure.
           // "codePage": 1254,
 
+          // json:          rewrite BinaryFormatter to System.Text.Json (the stored format changes; asks for approval)
+          // compatibility: keep BinaryFormatter through the System.Runtime.Serialization.Formatters package,
+          //                so data the old code wrote stays readable until a planned data migration
+          "binaryFormatter": "json",
+
           // Per-project exceptions, by name; "*" is a wildcard.
           "projects": {
-            // "MyCompany.Shared": { "multiTarget": "always" }
+            // "MyCompany.Shared": { "multiTarget": "always" },
+            // "MyCompany.Caching": { "binaryFormatter": "json" }
           }
         }
 
@@ -206,6 +249,7 @@ public sealed class MigrationProfile
     public string Describe() =>
         $"multiTarget: {MultiTarget.ToString().ToLowerInvariant()}, commits: {Commits.ToString().ToLowerInvariant()}" +
         (CodePage is { } page ? $", codePage: {page}" : "") +
+        (BinaryFormatter != BinaryFormatterStrategy.Json ? $", binaryFormatter: {BinaryFormatter.ToString().ToLowerInvariant()}" : "") +
         (_projects.Count > 0 ? $", {_projects.Count} project exception(s)" : "");
 
     private static void CheckKeys(JsonElement element, string[] allowed, string where)
