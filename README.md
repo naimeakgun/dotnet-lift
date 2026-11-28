@@ -237,6 +237,15 @@ $ dotnet-lift add-tests --project Acme.Core --dry-run  # the new files and the .
 
 The test-first workflow starts with a place to write tests while the library is still on .NET Framework. `add-tests` creates an SDK-style MSTest project `<name>.Tests` next to the library (under `tests/` when the solution keeps libraries in `src/` and has one), with a project reference to it and a first test that loads the library, and adds it to the .sln with the library's build configurations and solution folder. It targets what the library targets: `net48` while the library is a .NET Framework project, `net48;net10.0` once it multi-targets. `upgrade` plans the test project right after its library and retargets it the same way, so the tests written on .NET Framework run unchanged on the new target, and on both while the library multi-targets. Package versions follow the repository: `Directory.Packages.props` under CPM, else the versions its other MSTest projects use, else `MSTest.TestFramework`/`MSTest.TestAdapter` 3.x and `Microsoft.NET.Test.Sdk`. The generated code compiles as C# 7.3. CI scaffolds tests for the upgraded sample and runs them on net48 (Windows) and net10.0.
 
+**Golden vectors.** Some outputs must stay byte for byte the same after the move: password hashes, bytes written with a code page, serialized data, formatted text. The test project gets a `GoldenVector` helper for them:
+
+```csharp
+GoldenVector.Check("password-hash", PasswordHasher.Hash("Ömer", "café"));          // text → golden/password-hash.txt (UTF-8)
+GoldenVector.Check("snapshot", SnapshotSerializer.Serialize(order));               // bytes → golden/snapshot.bin
+```
+
+On .NET Framework a missing vector is recorded and an existing one is compared, so run `dotnet test -f net48` before the library moves and commit `golden/` together with the tests. On modern .NET the vector is only compared: a missing one fails (it was never recorded on the old framework), and a different one fails with the first differing byte, a hex window of both outputs and, for text, both strings with non-ASCII characters escaped (so `İ`/`ı` or `U+FFFD` are visible). `DOTNET_LIFT_GOLDEN=record` re-records the vectors when a change is intended. The helper has no test-framework dependency, the project file tells it where its folder is, and `golden/.gitattributes` keeps git from converting line endings. CI follows the whole workflow on Windows: tests and vectors recorded on net48 and committed, then `upgrade`, which runs the tests on net10.0 and reports the password hash that `Encoding.Default` changed, while the same tests still pass on net48.
+
 ### Cleanup
 
 ```console

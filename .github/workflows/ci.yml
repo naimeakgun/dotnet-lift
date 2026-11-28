@@ -151,6 +151,69 @@ jobs:
           dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net10.0
           dotnet build LegacyShop.Data/LegacyShop.Data.csproj -f net10.0
 
+      - name: Test-first workflow - golden vectors recorded on net48 catch an output change on net10.0
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cp -r samples/LegacyShop "$RUNNER_TEMP/Golden"
+          cd "$RUNNER_TEMP/Golden"
+          git init -q
+          git config user.name ci
+          git config user.email ci@example.com
+          git add -A && git commit -qm "legacy sample"
+          # 1. Tests first, while the library is still a .NET Framework project.
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- add-tests . --project LegacyShop.Core --yes
+          test -f LegacyShop.Core.Tests/GoldenVector.cs
+          cat > LegacyShop.Core.Tests/OutputTests.cs <<'CS'
+          using System.Globalization;
+          using System.Text;
+          using LegacyShop.Core.Models;
+          using LegacyShop.Core.Services;
+          using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+          namespace LegacyShop.Core.Tests
+          {
+              [TestClass]
+              public class OutputTests
+              {
+                  [TestMethod]
+                  public void Order_total_is_unchanged()
+                  {
+                      var order = new Order();
+                      order.Lines.Add(new OrderLine { ProductId = 1, Quantity = 3, UnitPrice = 19.99m });
+                      order.Lines.Add(new OrderLine { ProductId = 2, Quantity = 1, UnitPrice = 0.05m });
+
+                      GoldenVector.Check("order-total", new PriceCalculator(0.20m).Total(order).ToString(CultureInfo.InvariantCulture));
+                  }
+
+                  [TestMethod]
+                  public void Password_hash_is_unchanged()
+                  {
+                      // Hashes Encoding.Default bytes: the server's ANSI code page on .NET Framework, UTF-8 on modern .NET.
+                      GoldenVector.Check("password-hash", Encoding.Unicode.GetBytes(PasswordHasher.Hash("Ömer", "café")));
+                  }
+              }
+          }
+          CS
+          nuget restore LegacyShop.Core/packages.config -PackagesDirectory packages
+          dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net48
+          ls -l LegacyShop.Core.Tests/golden
+          test -f LegacyShop.Core.Tests/golden/order-total.txt
+          test -f LegacyShop.Core.Tests/golden/password-hash.bin
+          # Recorded vectors are compared on the next run, on .NET Framework too.
+          dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net48
+          git add -A && git commit -qm "tests"
+          # 2. The conversion. The library moves without a code-page decision, so the hash changes and the tests say so.
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes | tee upgrade.txt || true
+          grep -F "LegacyShop.Core.Tests: tests fail on net10.0 (2 passed, 1 failed" upgrade.txt
+          dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net10.0 > net10.txt 2>&1 && exit 1
+          cat net10.txt
+          grep -F "Golden vector password-hash.bin differs on .NET 10" net10.txt
+          grep -F "Password_hash_is_unchanged" net10.txt
+          if grep -F "Order_total_is_unchanged" net10.txt; then exit 1; fi
+          # The same tests still pass on net48: the difference is the framework, not the tests.
+          dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net48
+
       - name: Upload sample report
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
