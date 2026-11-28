@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@ViewBag.ShopName</title>
+    @Styles.Render("~/Content/css")
+</head>
+<body>
+    <header>
+        <h1>@ViewBag.ShopName</h1>
+        @Html.Action("MiniCart", "Home")
+    </header>
+    <main>
+        @RenderBody()
+    </main>
+    @Scripts.Render("~/bundles/site")
+    @RenderSection("scripts", required: false)
+</body>
+</html>
