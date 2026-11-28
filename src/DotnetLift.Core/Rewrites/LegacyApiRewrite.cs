@@ -95,10 +95,7 @@ public static class LegacyApiRewrite
 
         var removed = usings.Where(Unused).ToList();
         var index = removed.Count > 0 ? usings.IndexOf(removed[0]) : -1;
-        foreach (var u in removed)
-        {
-            usings = usings.Remove(u);
-        }
+        usings = SyntaxFactory.List(usings.Where(u => !removed.Contains(u)));
 
         var inNamespace = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().Any(n => n.Name.ToString() == helperNamespace);
         if (!inNamespace && !usings.Any(u => u.Alias is null && u.Name?.ToString() == helperNamespace))
