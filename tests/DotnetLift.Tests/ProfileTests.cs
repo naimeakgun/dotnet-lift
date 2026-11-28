@@ -84,6 +84,7 @@ public class ProfileTests
         Assert.Equal(MultiTargetMode.Auto, profile.MultiTarget);
         Assert.Equal(CommitMode.Step, profile.Commits);
         Assert.Null(profile.CodePage);
+        Assert.Equal(BinaryFormatterStrategy.Json, profile.BinaryFormatter);
     }
 
     [Fact]

@@ -48,7 +48,13 @@ public static class UpgradePlanner
                     MultiTargetMode.Never => false,
                     _ => webProjectsStillOnFramework,
                 };
-                AddLibrarySteps(builder, project, analysis.TargetFramework, multiTarget, hosts, packagesConfigConsumers, profile.CodePage);
+                var consumers = order
+                    .Where(p => p != project && p.ProjectReferences.Any(r =>
+                        string.Equals(Path.GetFullPath(r), Path.GetFullPath(project.FullPath), StringComparison.OrdinalIgnoreCase)))
+                    .Select(p => p.Name)
+                    .ToList();
+                AddLibrarySteps(builder, project, analysis.TargetFramework, multiTarget, hosts, packagesConfigConsumers, consumers,
+                    profile.CodePage, profile.BinaryFormatterFor(project.Name));
             }
         }
 
@@ -56,7 +62,8 @@ public static class UpgradePlanner
     }
 
     private static void AddLibrarySteps(StepBuilder b, ProjectInfo p, string target, bool consumedByFrameworkApp,
-        IReadOnlyList<string> hostStartupFiles, IReadOnlyList<string> packagesConfigConsumers, int? codePage)
+        IReadOnlyList<string> hostStartupFiles, IReadOnlyList<string> packagesConfigConsumers, IReadOnlyList<string> consumers,
+        int? codePage, BinaryFormatterStrategy binaryFormatter)
     {
         if (p.HasPackagesConfig)
         {
@@ -152,7 +159,21 @@ public static class UpgradePlanner
                 StepMode.Automatic, Risk.Medium, IsCodePageFinding, argument: page.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
-        if (b.Has(IsBinaryFormatter))
+        if (binaryFormatter == BinaryFormatterStrategy.Compatibility && b.Has(IsBinaryFormatter))
+        {
+            var hostNote = consumers.Count == 0
+                ? " The application that runs this code on modern .NET must set it too"
+                : $" {string.Join(", ", consumers)} must set it too once {(consumers.Count == 1 ? "it targets" : "they target")} modern .NET";
+            b.Add("binaryformatter-compat", "Keep BinaryFormatter with the compatibility package",
+                $"As chosen in {MigrationProfile.FileName} (\"binaryFormatter\": \"compatibility\"), the code and the stored data stay as they are: " +
+                $"the modern target references {BinaryFormatterCompatibility.PackageId} {BinaryFormatterCompatibility.PackageVersion}, which brings back a working BinaryFormatter, " +
+                $"and the project sets {BinaryFormatterCompatibility.SwitchProperty} (the {BinaryFormatterCompatibility.ObsoleteWarning} warning is silenced; the decision is recorded in the project file)." +
+                hostNote + $" (<{BinaryFormatterCompatibility.SwitchProperty}>true</{BinaryFormatterCompatibility.SwitchProperty}> in the project file): " +
+                "the switch is read from the application's runtimeconfig.json, and without it BinaryFormatter throws at runtime. " +
+                "The package is unsupported and BinaryFormatter is unsafe with untrusted input: use this for data you wrote yourself, until a planned data migration.",
+                StepMode.Automatic, Risk.Medium, IsBinaryFormatter);
+        }
+        else if (b.Has(IsBinaryFormatter))
         {
             var consumerNote = packagesConfigConsumers.Count == 0
                 ? ""

@@ -13,7 +13,7 @@
 Early, built in public. Working today:
 
 - `analyze`: findings with file and line, an ordered plan, a Markdown report.
-- `upgrade`: packages.config → PackageReference, legacy → SDK-style, retarget libraries to `net48;net10.0`, **Roslyn rewrites** for well-known APIs (`HttpRuntime.Cache` → `MemoryCache`, `HttpContext.Current.User` → a `CurrentUser` provider the web app sets at startup, and `BinaryFormatter` → `System.Text.Json` with explicit approval), then a **build → read errors → fix → rebuild** loop that fixes known errors (missing packages) and explains the ones that need a code change. For the web project: Web.config settings → **appsettings.json**.
+- `upgrade`: packages.config → PackageReference, legacy → SDK-style, retarget libraries to `net48;net10.0`, **Roslyn rewrites** for well-known APIs (`HttpRuntime.Cache` → `MemoryCache`, `HttpContext.Current.User` → a `CurrentUser` provider the web app sets at startup, and `BinaryFormatter` → `System.Text.Json` with explicit approval, or kept through the compatibility package when the profile says so), then a **build → read errors → fix → rebuild** loop that fixes known errors (missing packages) and explains the ones that need a code change. For the web project: Web.config settings → **appsettings.json**.
 - Before the move: `cpm` (Central Package Management), `refs` (DLL file references → packages), `cleanup` (unused legacy references, Visual Studio migration backups) and `add-tests` (an MSTest project for a library, to write tests in before it moves).
 
 On the sample, **both class libraries build for .NET 10** after `dotnet-lift upgrade` (and still for .NET Framework 4.8, so the old web app keeps working). The web project has started: its settings are in appsettings.json; static files, the project file and Program.cs are next. See the [roadmap](docs/ROADMAP.md).
@@ -198,11 +198,14 @@ The team's decisions live in `dotnet-lift.json`, committed with the code, so eve
   "multiTarget": "never",     // auto (default): multi-target while a .NET Framework web app uses the library; always; never
   "commits": "single",        // step (default): one commit per step; single: one commit for the conversion
   "codePage": 1254,           // what Encoding.Default meant on your servers
-  "projects": { "MyCompany.Shared": { "multiTarget": "always" }, "*.Tests": { "multiTarget": "never" } }
+  "binaryFormatter": "compatibility", // json (default): rewrite to System.Text.Json; compatibility: keep it, data stays readable
+  "projects": { "MyCompany.Shared": { "multiTarget": "always" }, "*.Tests": { "multiTarget": "never" }, "MyCompany.Caching": { "binaryFormatter": "json" } }
 }
 ```
 
 With `codePage` set, `upgrade` adds a step that sends `Encoding.Default` / `Encoding.GetEncoding(0)` to that code page and legacy code pages through a small generated `LegacyEncoding` helper (it registers `CodePagesEncodingProvider` on modern .NET and compiles as C# 7.3 for .NET Framework), so text that is hashed or stored keeps its bytes. CI upgrades the sample with such a profile and builds the result for net48 and net10.0.
+
+With `"binaryFormatter": "compatibility"`, `upgrade` keeps BinaryFormatter instead of rewriting it to System.Text.Json: the library's modern target references the unsupported `System.Runtime.Serialization.Formatters` package and the project sets `EnableUnsafeBinaryFormatterSerialization` (and silences `SYSLIB0011`, since keeping it is a recorded decision). The code and the serialized format stay as they are, so data written by the old code stays readable until a planned data migration. Every application that runs the library on modern .NET must set `<EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>` too, because the switch is read from the application's runtimeconfig; the step lists the projects that use the library. Keep the JSON rewrite (per project) for caches and other data that can be dropped. CI writes a snapshot with the upgraded library on net48 and reads it back, byte for byte, on net10.0.
 
 `analyze` and `upgrade` use the nearest `dotnet-lift.json` at or above the path (or `--profile <file>`). Unknown settings and invalid values stop the run with a clear message instead of being ignored.
 
