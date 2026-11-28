@@ -39,6 +39,19 @@ public enum BinaryFormatterStrategy
     Compatibility,
 }
 
+/// <summary>What happens to code that uses the legacy System.Data.SqlClient driver.</summary>
+public enum SqlClientStrategy
+{
+    /// <summary>Move to Microsoft.Data.SqlClient after explicit approval (default): it encrypts connections by default, which can break a connection at runtime.</summary>
+    Ask,
+
+    /// <summary>Move to Microsoft.Data.SqlClient without asking: the team has decided, and checked Encrypt / TrustServerCertificate in its connection strings.</summary>
+    Microsoft,
+
+    /// <summary>Keep System.Data.SqlClient (on modern .NET through its deprecated package).</summary>
+    Keep,
+}
+
 /// <summary>
 /// dotnet-lift.json: the team's decisions for a repository, so every developer (and every run) converts the same way.
 /// Without the file the tool keeps its defaults.
@@ -49,6 +62,7 @@ public enum BinaryFormatterStrategy
 ///   "commits": "single",                 // step | single
 ///   "codePage": 1254,                    // what Encoding.Default meant on your servers
 ///   "binaryFormatter": "compatibility",  // json | compatibility
+///   "sqlClient": "microsoft",            // ask | microsoft | keep
 ///   "projects": {
 ///     "MyCompany.Shared": { "multiTarget": "always" },
 ///     "MyCompany.Caching": { "binaryFormatter": "json" },
@@ -62,7 +76,7 @@ public sealed class MigrationProfile
     public const string FileName = "dotnet-lift.json";
 
     private static readonly string[] SupportedTargets = ["net10.0", "net11.0"];
-    private static readonly string[] TopLevelKeys = ["target", "multiTarget", "commits", "codePage", "binaryFormatter", "projects"];
+    private static readonly string[] TopLevelKeys = ["target", "multiTarget", "commits", "codePage", "binaryFormatter", "sqlClient", "projects"];
     private static readonly string[] ProjectKeys = ["multiTarget", "binaryFormatter"];
 
     /// <summary>One entry under "projects": a name pattern and the settings it overrides (null = not set there).</summary>
@@ -71,8 +85,9 @@ public sealed class MigrationProfile
     private readonly List<ProjectRule> _projects;
 
     private MigrationProfile(string? path, string? target, MultiTargetMode multiTarget, CommitMode commits, int? codePage,
-        BinaryFormatterStrategy binaryFormatter, List<ProjectRule> projects)
+        BinaryFormatterStrategy binaryFormatter, SqlClientStrategy sqlClient, List<ProjectRule> projects)
     {
+        SqlClient = sqlClient;
         Path = path;
         Target = target;
         MultiTarget = multiTarget;
@@ -83,7 +98,7 @@ public sealed class MigrationProfile
     }
 
     public static MigrationProfile Default { get; } =
-        new(null, null, MultiTargetMode.Auto, CommitMode.Step, null, BinaryFormatterStrategy.Json, []);
+        new(null, null, MultiTargetMode.Auto, CommitMode.Step, null, BinaryFormatterStrategy.Json, SqlClientStrategy.Ask, []);
 
     /// <summary>The file this profile came from; null for the defaults.</summary>
     public string? Path { get; }
@@ -99,6 +114,9 @@ public sealed class MigrationProfile
 
     /// <summary>What to do with BinaryFormatter code by default (json unless the team chose otherwise).</summary>
     public BinaryFormatterStrategy BinaryFormatter { get; }
+
+    /// <summary>Whether System.Data.SqlClient code moves to Microsoft.Data.SqlClient, and whether that asks first.</summary>
+    public SqlClientStrategy SqlClient { get; }
 
     public bool IsDefault => Path is null;
 
@@ -180,6 +198,10 @@ public sealed class MigrationProfile
                 ? ReadEnum<BinaryFormatterStrategy>(bf, "binaryFormatter", name)
                 : BinaryFormatterStrategy.Json;
 
+            var sqlClient = root.TryGetProperty("sqlClient", out var sc)
+                ? ReadEnum<SqlClientStrategy>(sc, "sqlClient", name)
+                : SqlClientStrategy.Ask;
+
             var projects = new List<ProjectRule>();
             if (root.TryGetProperty("projects", out var p))
             {
@@ -207,7 +229,7 @@ public sealed class MigrationProfile
                 }
             }
 
-            return new MigrationProfile(System.IO.Path.GetFullPath(path), target, multiTarget, commits, codePage, binaryFormatter, projects);
+            return new MigrationProfile(System.IO.Path.GetFullPath(path), target, multiTarget, commits, codePage, binaryFormatter, sqlClient, projects);
         }
     }
 
@@ -237,6 +259,12 @@ public sealed class MigrationProfile
           //                so data the old code wrote stays readable until a planned data migration
           "binaryFormatter": "json",
 
+          // ask:       move System.Data.SqlClient code to Microsoft.Data.SqlClient after explicit approval
+          //            (it encrypts by default: check Encrypt / TrustServerCertificate in your connection strings)
+          // microsoft: move without asking (the team has checked its connection strings)
+          // keep:      stay on System.Data.SqlClient
+          "sqlClient": "ask",
+
           // Per-project exceptions, by name; "*" is a wildcard.
           "projects": {
             // "MyCompany.Shared": { "multiTarget": "always" },
@@ -250,6 +278,7 @@ public sealed class MigrationProfile
         $"multiTarget: {MultiTarget.ToString().ToLowerInvariant()}, commits: {Commits.ToString().ToLowerInvariant()}" +
         (CodePage is { } page ? $", codePage: {page}" : "") +
         (BinaryFormatter != BinaryFormatterStrategy.Json ? $", binaryFormatter: {BinaryFormatter.ToString().ToLowerInvariant()}" : "") +
+        (SqlClient != SqlClientStrategy.Ask ? $", sqlClient: {SqlClient.ToString().ToLowerInvariant()}" : "") +
         (_projects.Count > 0 ? $", {_projects.Count} project exception(s)" : "");
 
     private static void CheckKeys(JsonElement element, string[] allowed, string where)

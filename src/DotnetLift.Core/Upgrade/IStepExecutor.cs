@@ -21,6 +21,9 @@ public interface IStepExecutor
     /// </summary>
     bool RequiresExplicitApproval => false;
 
+    /// <summary>Whether this particular step needs explicit approval; a profile decision can lift it for one step.</summary>
+    bool NeedsApproval(UpgradeStep step) => RequiresExplicitApproval;
+
     /// <summary>Shown before asking, when <see cref="RequiresExplicitApproval"/> is true.</summary>
     string? ApprovalNote => null;
 
@@ -43,6 +46,7 @@ public static class StepExecutors
         new ExplicitCodePage(),
         new BinaryFormatterToJson(),
         new BinaryFormatterCompatibility(),
+        new SqlClientMigration(),
         new WebConfigToAppSettings(),
         new StaticFilesToWwwroot(),
     ];

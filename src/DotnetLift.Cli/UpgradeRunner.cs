@@ -189,7 +189,7 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
 
             output.WriteLine($"  {step.Description}");
             PrintChanges(changes, root);
-            if (executor.RequiresExplicitApproval)
+            if (executor.NeedsApproval(step))
             {
                 output.WriteLine($"  ⚠ {executor.ApprovalNote}");
             }
@@ -201,7 +201,7 @@ public sealed class UpgradeRunner(Prompt prompt, TextWriter output, IBuilder bui
             }
 
             // Behaviour-changing steps: never applied by --yes alone, and the question defaults to "no".
-            var mustConfirm = executor.RequiresExplicitApproval && !settings.AcceptRisky;
+            var mustConfirm = executor.NeedsApproval(step) && !settings.AcceptRisky;
             if (settings.Yes && mustConfirm)
             {
                 output.WriteLine("  → Not applied: this step needs your explicit approval. Run without --yes to decide, or add --accept-risky.");
