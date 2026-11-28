@@ -204,13 +204,13 @@ jobs:
           dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net48
           git add -A && git commit -qm "tests"
           # 2. The conversion. The library moves without a code-page decision, so the hash changes and the tests say so.
-          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes | tee upgrade.txt || true
-          grep -F "LegacyShop.Core.Tests: tests fail on net10.0 (2 passed, 1 failed" upgrade.txt
-          dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net10.0 > net10.txt 2>&1 && exit 1
-          cat net10.txt
-          grep -F "Golden vector password-hash.bin differs on .NET 10" net10.txt
-          grep -F "Password_hash_is_unchanged" net10.txt
-          if grep -F "Order_total_is_unchanged" net10.txt; then exit 1; fi
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes | tee "$RUNNER_TEMP/upgrade.txt" || true
+          grep -F "LegacyShop.Core.Tests: tests fail on net10.0 (2 passed, 1 failed" "$RUNNER_TEMP/upgrade.txt"
+          dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net10.0 > "$RUNNER_TEMP/net10.txt" 2>&1 && exit 1
+          cat "$RUNNER_TEMP/net10.txt"
+          grep -F "Golden vector password-hash.bin differs on .NET 10" "$RUNNER_TEMP/net10.txt"
+          grep -F "Password_hash_is_unchanged" "$RUNNER_TEMP/net10.txt"
+          if grep -F "Order_total_is_unchanged" "$RUNNER_TEMP/net10.txt"; then exit 1; fi
           # The same tests still pass on net48: the difference is the framework, not the tests.
           dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net48
 
