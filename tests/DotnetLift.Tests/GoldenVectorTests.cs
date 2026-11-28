@@ -1,5 +1,5 @@
 using System.Reflection;
-using System.Runtime.Loader;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using DotnetLift.Core.Upgrade;
 using Microsoft.CodeAnalysis;
@@ -38,20 +38,25 @@ public class GoldenVectorTests
         Assert.True(result.Success, string.Join("\n", result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
         Assert.DoesNotContain(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Warning && d.Location.IsInSource);
 
-        stream.Position = 0;
-        return new AssemblyLoadContext(null, isCollectible: true).LoadFromStream(stream).GetType("Acme.Core.Tests.GoldenVector")!;
+        var assembly = Assembly.Load(stream.ToArray());
+        var type = assembly.GetTypes().SingleOrDefault(t => t.Name == "GoldenVector");
+        Assert.True(type is not null, "GoldenVector not found; types: " + string.Join(", ", assembly.GetTypes().Select(t => t.FullName)));
+        Assert.Equal("Acme.Core.Tests.GoldenVector", type!.FullName);
+        return type;
     }
 
     private static void Check(Type helper, string name, object value)
     {
-        var method = helper.GetMethod("Check", [value.GetType()])!;
+        var methods = helper.GetMethods(BindingFlags.Public | BindingFlags.Static).Where(m => m.Name == "Check").ToList();
+        var method = methods.SingleOrDefault(m => m.GetParameters()[1].ParameterType.FullName == value.GetType().FullName);
+        Assert.True(method is not null, "No Check overload for " + value.GetType() + "; found: " + string.Join(", ", methods));
         try
         {
-            method.Invoke(null, [name, value]);
+            method!.Invoke(null, [name, value]);
         }
         catch (TargetInvocationException e) when (e.InnerException is not null)
         {
-            throw e.InnerException;
+            ExceptionDispatchInfo.Capture(e.InnerException).Throw();
         }
     }
 
