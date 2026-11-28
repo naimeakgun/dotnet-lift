@@ -25,6 +25,7 @@ public sealed class SolutionAnalyzer
         new SourceApiAnalyzer(),
         new DataCompatibilityAnalyzer(),
         new SqlClientAnalyzer(),
+        new PlatformInventoryAnalyzer(),
         new UnusedReferenceAnalyzer(),
         new TestProjectAnalyzer(),
     ];
