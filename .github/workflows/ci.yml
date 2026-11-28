@@ -221,6 +221,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/Sql/Acme.Data" && cd "$RUNNER_TEMP/Sql"
           printf '{ "target": "net10.0", "multiTarget": "always", "sqlClient": "microsoft" }\n' > dotnet-lift.json
+          printf 'bin/\nobj/\n' > .gitignore
           cat > Acme.Data/Acme.Data.csproj <<'XML'
           <Project Sdk="Microsoft.NET.Sdk">
             <PropertyGroup>
