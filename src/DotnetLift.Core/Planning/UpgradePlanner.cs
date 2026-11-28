@@ -114,6 +114,8 @@ public static class UpgradePlanner
                 f => f.Message.StartsWith("EntityFramework ") || f.Category == "Entity Framework");
         }
 
+        AddPackageUpgrades(b);
+
         static bool IsSqlClient(Finding f) => f.Category == SqlClientAnalyzer.Category;
 
         if (sqlClient != SqlClientStrategy.Keep
@@ -228,12 +230,29 @@ public static class UpgradePlanner
         return $" {framework} test project: adds {string.Join(", ", added.Select(a => $"{a.Id} {a.Version}"))} so `dotnet test` can run it.{replaced}";
     }
 
+    /// <summary>Third-party packages that need a new major version (EF 6 has its own step).</summary>
+    private static void AddPackageUpgrades(StepBuilder b)
+    {
+        static bool IsUpgrade(Finding f) =>
+            f.Category == PackageUpgradeAdvisor.Category && !f.Message.StartsWith("EntityFramework ", StringComparison.Ordinal);
+
+        if (b.Has(IsUpgrade))
+        {
+            b.Add("package-upgrades", "Upgrade packages that need a new major version",
+                "Move each listed package to the version (or replacement) that runs on modern .NET, one package at a time, and adapt the code to its breaking changes. " +
+                "Several of these change runtime behaviour without a build error (date/time mapping, GUID representation, timeouts): cover them with tests or golden vectors first.",
+                StepMode.AgentAssisted, Risk.High, IsUpgrade);
+        }
+    }
+
     private static void AddWebSteps(StepBuilder b, ProjectInfo p, string target)
     {
         b.Add("aspnetcore-project", $"Convert to an ASP.NET Core project ({target})",
             "Switch the project to Microsoft.NET.Sdk.Web, remove MVC 5 / Web API 2 / bundling packages, keep the project references.",
             StepMode.Automatic, Risk.Medium,
             f => f.Category is "Project file" or "Packages" or "Package" or "Target framework");
+
+        AddPackageUpgrades(b);
 
         if (p.HasGlobalAsax || b.Has(f => f.Category == "Startup"))
         {

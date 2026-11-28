@@ -20,6 +20,7 @@ public sealed class SolutionAnalyzer
     [
         new ProjectFormatAnalyzer(),
         new PackageAnalyzer(),
+        new PackageUpgradeAdvisor(),
         new AssemblyReferenceAnalyzer(),
         new WebConfigAnalyzer(),
         new SourceApiAnalyzer(),
