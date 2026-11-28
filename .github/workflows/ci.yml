@@ -216,6 +216,60 @@ jobs:
           # The same tests still pass on net48: the difference is the framework, not the tests.
           dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj -f net48
 
+      - name: SqlClient - a data library moves to Microsoft.Data.SqlClient and builds for net48 and net10.0
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/Sql/Acme.Data" && cd "$RUNNER_TEMP/Sql"
+          printf '{ "target": "net10.0", "multiTarget": "always", "sqlClient": "microsoft" }\n' > dotnet-lift.json
+          cat > Acme.Data/Acme.Data.csproj <<'XML'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>net48</TargetFramework>
+            </PropertyGroup>
+            <ItemGroup>
+              <PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
+            </ItemGroup>
+          </Project>
+          XML
+          cat > Acme.Data/OrderStore.cs <<'CS'
+          using System.Data;
+          using System.Data.SqlClient;
+
+          namespace Acme.Data
+          {
+              public class OrderStore
+              {
+                  private readonly string _connectionString;
+
+                  public OrderStore(string connectionString) { _connectionString = connectionString; }
+
+                  public int Count(int customerId)
+                  {
+                      using (var connection = new SqlConnection(_connectionString))
+                      using (var command = new System.Data.SqlClient.SqlCommand("select count(*) from Orders where CustomerId = @id", connection))
+                      {
+                          command.Parameters.Add(new SqlParameter("@id", SqlDbType.Int) { Value = customerId });
+                          connection.Open();
+                          return (int)command.ExecuteScalar();
+                      }
+                  }
+
+                  public static SqlConnectionStringBuilder Describe(string connectionString) => new SqlConnectionStringBuilder(connectionString);
+              }
+          }
+          CS
+          git init -q
+          git config user.name ci
+          git config user.email ci@example.com
+          git add -A && git commit -qm "data library"
+          dotnet build Acme.Data -f net48
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes
+          git log --oneline
+          grep -q "using Microsoft.Data.SqlClient;" Acme.Data/OrderStore.cs
+          ! grep -q "System.Data.SqlClient" Acme.Data/Acme.Data.csproj
+          dotnet build Acme.Data -f net48
+          dotnet build Acme.Data -f net10.0
+
       - name: Upload sample report
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
