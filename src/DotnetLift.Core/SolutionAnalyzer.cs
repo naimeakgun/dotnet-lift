@@ -24,6 +24,7 @@ public sealed class SolutionAnalyzer
         new WebConfigAnalyzer(),
         new SourceApiAnalyzer(),
         new DataCompatibilityAnalyzer(),
+        new SqlClientAnalyzer(),
         new UnusedReferenceAnalyzer(),
         new TestProjectAnalyzer(),
     ];

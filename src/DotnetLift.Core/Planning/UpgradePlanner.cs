@@ -54,7 +54,7 @@ public static class UpgradePlanner
                     .Select(p => p.Name)
                     .ToList();
                 AddLibrarySteps(builder, project, analysis.TargetFramework, multiTarget, hosts, packagesConfigConsumers, consumers,
-                    profile.CodePage, profile.BinaryFormatterFor(project.Name));
+                    profile.CodePage, profile.BinaryFormatterFor(project.Name), profile.SqlClient);
             }
         }
 
@@ -63,7 +63,7 @@ public static class UpgradePlanner
 
     private static void AddLibrarySteps(StepBuilder b, ProjectInfo p, string target, bool consumedByFrameworkApp,
         IReadOnlyList<string> hostStartupFiles, IReadOnlyList<string> packagesConfigConsumers, IReadOnlyList<string> consumers,
-        int? codePage, BinaryFormatterStrategy binaryFormatter)
+        int? codePage, BinaryFormatterStrategy binaryFormatter, SqlClientStrategy sqlClient = SqlClientStrategy.Ask)
     {
         if (p.HasPackagesConfig)
         {
@@ -112,6 +112,25 @@ public static class UpgradePlanner
                 "Update to the latest EF 6.x and move provider registration from App.config into a DbConfiguration class. EF Core is a separate project.",
                 StepMode.AgentAssisted, Risk.Medium,
                 f => f.Message.StartsWith("EntityFramework ") || f.Category == "Entity Framework");
+        }
+
+        static bool IsSqlClient(Finding f) => f.Category == SqlClientAnalyzer.Category;
+
+        if (sqlClient != SqlClientStrategy.Keep
+            && b.Has(f => IsSqlClient(f) && f.Message.StartsWith(SqlClientAnalyzer.UsagePrefix, StringComparison.Ordinal)))
+        {
+            var decided = sqlClient == SqlClientStrategy.Microsoft;
+            var ef6 = p.HasPackage("EntityFramework")
+                ? " EF 6's SQL Server provider stays on System.Data.SqlClient: code that passes a SqlConnection to a DbContext needs Microsoft.EntityFramework.SqlServer too."
+                : "";
+            b.Add("sqlclient", "Move from System.Data.SqlClient to Microsoft.Data.SqlClient",
+                $"Rewrite the System.Data.SqlClient namespace to Microsoft.Data.SqlClient (System.Data.Sql to Microsoft.Data.Sql; type names are the same), " +
+                $"reference {SqlClientMigration.PackageId} {SqlClientMigration.PackageVersion} for every target (it supports .NET Framework too, so the change is tested before the retarget) " +
+                "and remove the deprecated System.Data.SqlClient package. Connections are encrypted by default afterwards: " +
+                "connection strings without Encrypt / TrustServerCertificate can fail where the server certificate is not trusted." + ef6 +
+                (decided ? $" Applied without asking: \"sqlClient\": \"microsoft\" in {MigrationProfile.FileName}." : " Asks for explicit approval first."),
+                StepMode.Automatic, decided ? Risk.Medium : Risk.High, IsSqlClient,
+                argument: decided ? SqlClientMigration.ApprovedArgument : null);
         }
 
         // The .NET Framework part of the current target(s): "v4.7.2" → net472, "net48;net10.0" → net48.
