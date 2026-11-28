@@ -1,5 +1,5 @@
 using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
+using System.Text.Json;
 
 namespace LegacyShop.Core.Services
 {
@@ -10,7 +10,7 @@ namespace LegacyShop.Core.Services
         {
             using (var ms = new MemoryStream())
             {
-                new BinaryFormatter().Serialize(ms, value);
+                JsonSerializer.Serialize(ms, value);
                 return ms.ToArray();
             }
         }
@@ -19,7 +19,7 @@ namespace LegacyShop.Core.Services
         {
             using (var ms = new MemoryStream(data))
             {
-                return (T)new BinaryFormatter().Deserialize(ms);
+                return JsonSerializer.Deserialize<T>(ms);
             }
         }
     }
