@@ -157,6 +157,8 @@ jobs:
         run: |
           cp -r samples/LegacyShop "$RUNNER_TEMP/Golden"
           cd "$RUNNER_TEMP/Golden"
+          # Persisted snapshots keep BinaryFormatter; no code-page decision yet, so Encoding.Default changes meaning.
+          printf '{ "target": "net10.0", "binaryFormatter": "compatibility" }\n' > dotnet-lift.json
           git init -q
           git config user.name ci
           git config user.email ci@example.com
