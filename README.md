@@ -177,6 +177,9 @@ The SDK-style conversion keeps behaviour: the project still targets the same .NE
 | Unused references (C#, Roslyn) | ASP.NET MVC, bundling, OWIN, Unity and COM+ references nothing in the project uses: the same check `cleanup` runs, reported as info so the plan shows what never has to be migrated |
 | Test projects | MSTest, xUnit and NUnit projects (from packages, references or the test project type GUID), shown as *Tests (xUnit)* in the plan, with the packages `dotnet test` needs once they are SDK-style (`Microsoft.NET.Test.Sdk` and the adapter) and what is missing. Warns about frameworks that cannot run on modern .NET: MSTest v1 from the Visual Studio installation (`Microsoft.VisualStudio.QualityTools.UnitTestFramework`), NUnit 2, xUnit 1 |
 | Source code (C# and Razor) | `HttpContext.Current`, `HttpRuntime.Cache`, `Session[...]`, `Server.MapPath`, `FormsAuthentication`, `ConfigurationManager`, `BinaryFormatter`, child actions, bundling, `ApiController`, Global.asax registrations, `Thread.Abort`, `AppDomain.CreateDomain` |
+| Remoting and legacy APIs | `RealProxy`, `CallContext` (→ `AsyncLocal<T>`), `MarshalByRefObject`, `Marshal.GetActiveObject`, `ServicePointManager` (no effect on `HttpClient`), `JavaScriptSerializer`, custom `ConfigurationSection` classes, Enterprise Library, Razor template engines (RazorEngine, RazorGenerator), version-exact `#if NET6_0` symbols that are silently false on net10.0 |
+| Windows-only (for Linux hosting) | Registry, EventLog, performance counters, `WindowsIdentity`, WMI, P/Invoke, COM references in the project file, and a `System.Drawing` inventory per project with counts per type (`Bitmap ×3, Graphics ×2`) |
+| SQL client | `System.Data.SqlClient` usages and package, connection strings without `Encrypt`, `DbProviderFactories.GetFactory("System.Data.SqlClient")`, the EF 6 provider |
 
 ## How the plan is built
 
