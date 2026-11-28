@@ -146,7 +146,17 @@ public static class UpgradePlanner
                 : $"Change the target framework to {target} only. Framework-only references are removed; anything that stays on .NET Framework uses the library's last .NET Framework build (for example its last package).",
             StepMode.Automatic, Risk.Medium, f => f.Category == "Target framework", argument: tfm);
 
-        if (b.Has(f => f.Message.StartsWith("HttpRuntime.Cache")))
+        if (profile?.Cache is { } cache && profile.Path is { } cacheProfile && b.Has(f => f.Message.StartsWith("HttpRuntime.Cache")))
+        {
+            b.Add("api-rewrites", "Move HttpRuntime.Cache to the team's cache API (Roslyn)",
+                $"As set in {MigrationProfile.FileName} (\"cache\"): " +
+                string.Join(", ", cache.Templates.Select(t => $"{t.Key} → {t.Value}")) +
+                (cache.Usings.Count > 0 ? $"; adds using {string.Join(", ", cache.Usings)}" : "") +
+                ". Calls without a template (and Insert with dependencies, priorities or callbacks) stay as they are and in the report. " +
+                "The library must reference the project or package that defines the cache API.",
+                StepMode.Automatic, Risk.Medium, f => f.Message.StartsWith("HttpRuntime.Cache"), argument: cacheProfile);
+        }
+        else if (b.Has(f => f.Message.StartsWith("HttpRuntime.Cache")))
         {
             b.Add("api-rewrites", "Rewrite well-known APIs (Roslyn)",
                 "HttpRuntime.Cache becomes MemoryCache.Default (System.Runtime.Caching), which works on both .NET Framework and modern .NET. Only calls with an exact equivalent are rewritten; anything else is left for the build step to report.",

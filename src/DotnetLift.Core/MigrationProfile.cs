@@ -76,7 +76,7 @@ public sealed class MigrationProfile
     public const string FileName = "dotnet-lift.json";
 
     private static readonly string[] SupportedTargets = ["net10.0", "net11.0"];
-    private static readonly string[] TopLevelKeys = ["target", "multiTarget", "commits", "codePage", "binaryFormatter", "sqlClient", "requestContext", "projects"];
+    private static readonly string[] TopLevelKeys = ["target", "multiTarget", "commits", "codePage", "binaryFormatter", "sqlClient", "requestContext", "cache", "projects"];
     private static readonly string[] ProjectKeys = ["multiTarget", "binaryFormatter"];
 
     /// <summary>One entry under "projects": a name pattern and the settings it overrides (null = not set there).</summary>
@@ -120,6 +120,9 @@ public sealed class MigrationProfile
 
     /// <summary>The team's replacements for HttpContext.Current members, or null to use the generated CurrentUser provider.</summary>
     public RequestContextMap? RequestContext { get; private set; }
+
+    /// <summary>The team's cache API for HttpRuntime.Cache calls, or null for System.Runtime.Caching.MemoryCache.Default.</summary>
+    public CacheMap? Cache { get; private set; }
 
     public bool IsDefault => Path is null;
 
@@ -235,6 +238,7 @@ public sealed class MigrationProfile
             return new MigrationProfile(System.IO.Path.GetFullPath(path), target, multiTarget, commits, codePage, binaryFormatter, sqlClient, projects)
             {
                 RequestContext = root.TryGetProperty("requestContext", out var rc) ? RequestContextMap.Read(rc, name) : null,
+                Cache = root.TryGetProperty("cache", out var ca) ? CacheMap.Read(ca, name) : null,
             };
         }
     }
@@ -281,6 +285,17 @@ public sealed class MigrationProfile
           //   "usings": ["MyCompany.Web.Abstractions"]
           // },
 
+          // Your cache API instead of MemoryCache.Default for HttpRuntime.Cache (remove to keep MemoryCache.Default).
+          // Templates use {key}, {value}, {absolute} (DateTime) and {sliding} (TimeSpan); calls without a template stay as they are.
+          // "cache": {
+          //   "get": "CacheManager.Get<object>({key})",
+          //   "set": "CacheManager.Set({key}, {value})",
+          //   "setAbsolute": "CacheManager.Set({key}, {value}, {absolute})",
+          //   "setSliding": "CacheManager.SetSliding({key}, {value}, {sliding})",
+          //   "remove": "CacheManager.Remove({key})",
+          //   "usings": ["MyCompany.Caching"]
+          // },
+
           // Per-project exceptions, by name; "*" is a wildcard.
           "projects": {
             // "MyCompany.Shared": { "multiTarget": "always" },
@@ -296,6 +311,7 @@ public sealed class MigrationProfile
         (BinaryFormatter != BinaryFormatterStrategy.Json ? $", binaryFormatter: {BinaryFormatter.ToString().ToLowerInvariant()}" : "") +
         (SqlClient != SqlClientStrategy.Ask ? $", sqlClient: {SqlClient.ToString().ToLowerInvariant()}" : "") +
         (RequestContext is not null ? $", requestContext: {string.Join("/", RequestContext.Members.Keys.Select(k => k.ToLowerInvariant()))}" : "") +
+        (Cache is not null ? ", cache: custom" : "") +
         (_projects.Count > 0 ? $", {_projects.Count} project exception(s)" : "");
 
     private static void CheckKeys(JsonElement element, string[] allowed, string where)
@@ -408,5 +424,106 @@ public sealed class RequestContextMap
             throw new InvalidDataException($"{file}: \"requestContext\" needs at least one member (user, items, session, request, response, server, cache).");
         }
         return new RequestContextMap(members, context, usings);
+    }
+}
+
+/// <summary>
+/// "cache" in dotnet-lift.json: C# templates for the team's cache API that replace HttpRuntime.Cache calls,
+/// e.g. "get": "CacheManager.Get&lt;object&gt;({key})". A call shape without a template is left as it is.
+/// </summary>
+public sealed class CacheMap
+{
+    /// <summary>Template key → the placeholders it may use.</summary>
+    public static readonly IReadOnlyDictionary<string, string[]> Shapes = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    {
+        ["get"] = ["key"],
+        ["set"] = ["key", "value"],
+        ["setAbsolute"] = ["key", "value", "absolute"],
+        ["setSliding"] = ["key", "value", "sliding"],
+        ["remove"] = ["key"],
+    };
+
+    public CacheMap(IReadOnlyDictionary<string, string> templates, IReadOnlyList<string> usings)
+    {
+        Templates = templates;
+        Usings = usings;
+    }
+
+    /// <summary>Shape (get, set, setAbsolute, setSliding, remove) → template.</summary>
+    public IReadOnlyDictionary<string, string> Templates { get; }
+
+    public IReadOnlyList<string> Usings { get; }
+
+    /// <summary>The template with its placeholders filled in, or null when the shape has no template.</summary>
+    public string? Fill(string shape, IReadOnlyDictionary<string, string> values)
+    {
+        if (!Templates.TryGetValue(shape, out var template))
+        {
+            return null;
+        }
+        foreach (var (name, value) in values)
+        {
+            template = template.Replace("{" + name + "}", value, StringComparison.Ordinal);
+        }
+        return template;
+    }
+
+    internal static CacheMap Read(JsonElement e, string file)
+    {
+        if (e.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException($"{file}: \"cache\" must be an object, e.g. {{ \"get\": \"CacheManager.Get<object>({{key}})\" }}.");
+        }
+
+        var templates = new Dictionary<string, string>(StringComparer.Ordinal);
+        var usings = new List<string>();
+        foreach (var property in e.EnumerateObject())
+        {
+            var where = $"{file}: cache.{property.Name}";
+            if (property.Name == "usings")
+            {
+                if (property.Value.ValueKind != JsonValueKind.Array || property.Value.EnumerateArray().Any(u => u.ValueKind != JsonValueKind.String))
+                {
+                    throw new InvalidDataException($"{where} must be an array of namespaces.");
+                }
+                usings.AddRange(property.Value.EnumerateArray().Select(u => u.GetString()!.Trim()).Where(u => u.Length > 0));
+                continue;
+            }
+
+            if (!Shapes.TryGetValue(property.Name, out var allowed))
+            {
+                throw new InvalidDataException($"{file}: unknown setting cache.{property.Name}. Known: {string.Join(", ", Shapes.Keys)}, usings.");
+            }
+            var template = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString()!.Trim() : "";
+
+            var used = System.Text.RegularExpressions.Regex.Matches(template, @"\{(\w+)\}").Select(m => m.Groups[1].Value).ToList();
+            var unknown = used.Where(u => !allowed.Contains(u)).Distinct().ToList();
+            if (unknown.Count > 0)
+            {
+                throw new InvalidDataException($"{where} uses {{{string.Join("}, {", unknown)}}}; it can use {{{string.Join("}, {", allowed)}}}.");
+            }
+            if (!used.Contains("key"))
+            {
+                throw new InvalidDataException($"{where} must use {{key}}.");
+            }
+
+            var probe = template;
+            foreach (var name in allowed)
+            {
+                probe = probe.Replace("{" + name + "}", "x" + name, StringComparison.Ordinal);
+            }
+            var parsed = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseExpression(probe);
+            if (parsed.ContainsDiagnostics || parsed.ToString() != probe)
+            {
+                throw new InvalidDataException($"{where} must be a C# expression with placeholders, e.g. \"CacheManager.Get<object>({{key}})\".");
+            }
+            templates[property.Name] = template;
+        }
+
+        if (templates.Count == 0)
+        {
+            throw new InvalidDataException($"{file}: \"cache\" needs at least one template ({string.Join(", ", Shapes.Keys)}).");
+        }
+        return new CacheMap(templates, usings);
     }
 }

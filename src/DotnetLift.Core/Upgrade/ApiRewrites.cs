@@ -28,17 +28,20 @@ public sealed class ApiRewrites : IStepExecutor
             return changes; // the rewritten code needs references only an SDK-style project file can scope per target
         }
 
+        // The profile's "cache" templates (step argument = profile path) replace MemoryCache.Default with the team's cache API.
+        var custom = step.Argument is { } profilePath ? MigrationProfile.Load(profilePath).Cache : null;
+
         foreach (var file in current.SourceFiles)
         {
             var source = File.ReadAllText(file);
-            var rewrite = HttpRuntimeCacheRewrite.Rewrite(source);
+            var rewrite = custom is null ? HttpRuntimeCacheRewrite.Rewrite(source) : CustomCacheRewrite.Rewrite(source, custom);
             if (rewrite is { Replaced: > 0 } && rewrite.NewText != source)
             {
                 changes.Add(new FileChange(file, rewrite.NewText));
             }
         }
 
-        if (changes.Count > 0)
+        if (changes.Count > 0 && custom is null)
         {
             var central = CentralPackageFile.Find(current.Directory);
             var csproj = AddRuntimeCaching(current, central);
