@@ -74,13 +74,68 @@ jobs:
           dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- add-tests . --project LegacyShop.Core --yes --allow-dirty
           dotnet test LegacyShop.Core.Tests/LegacyShop.Core.Tests.csproj
 
-      - name: Upgrade the sample with a migration profile (code page 1254), then build both targets
+      - name: BinaryFormatter compatibility path - data written on net48 is read back on net10.0
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cp -r samples/LegacyShop "$RUNNER_TEMP/Compat"
+          cd "$RUNNER_TEMP/Compat"
+          printf '{ "target": "net10.0", "multiTarget": "always", "binaryFormatter": "compatibility" }\n' > dotnet-lift.json
+          git init -q
+          git config user.name ci
+          git config user.email ci@example.com
+          git add -A && git commit -qm "legacy sample"
+          dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes
+          grep -q "new BinaryFormatter()" LegacyShop.Core/Services/SnapshotSerializer.cs
+          # A small host app: like any application that runs the library on modern .NET, it sets the switch itself.
+          mkdir Probe
+          cat > Probe/Probe.csproj <<'XML'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType>
+              <TargetFrameworks>net48;net10.0</TargetFrameworks>
+              <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+              <NoWarn>$(NoWarn);SYSLIB0011</NoWarn>
+            </PropertyGroup>
+            <ItemGroup>
+              <ProjectReference Include="..\LegacyShop.Core\LegacyShop.Core.csproj" />
+            </ItemGroup>
+          </Project>
+          XML
+          cat > Probe/Program.cs <<'CS'
+          using System;
+          using System.IO;
+          using System.Linq;
+          using LegacyShop.Core.Services;
+
+          static class Program
+          {
+              static readonly string[] Value = { "cart-42", "İstanbul ığüşöç", "3" };
+
+              static int Main(string[] args)
+              {
+                  if (args[0] == "write")
+                  {
+                      File.WriteAllBytes(args[1], SnapshotSerializer.Serialize(Value));
+                      return 0;
+                  }
+                  var read = SnapshotSerializer.Deserialize<string[]>(File.ReadAllBytes(args[1]));
+                  var again = SnapshotSerializer.Serialize(read);
+                  Console.WriteLine(string.Join(" | ", read));
+                  return read.SequenceEqual(Value) && again.SequenceEqual(File.ReadAllBytes(args[1])) ? 0 : 1;
+              }
+          }
+          CS
+          dotnet run --project Probe -f net48 -- write "$RUNNER_TEMP/snapshot.bin"
+          dotnet run --project Probe -f net10.0 -- read "$RUNNER_TEMP/snapshot.bin"
+
+      - name: Upgrade the sample with a migration profile (code page 1254, BinaryFormatter kept), then build both targets
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           cp -r samples/LegacyShop "$RUNNER_TEMP/Profiled"
           cd "$RUNNER_TEMP/Profiled"
-          printf '{ "target": "net10.0", "codePage": 1254, "commits": "single" }\n' > dotnet-lift.json
+          printf '{ "target": "net10.0", "codePage": 1254, "binaryFormatter": "compatibility", "commits": "single" }\n' > dotnet-lift.json
           git init -q
           git config user.name ci
           git config user.email ci@example.com
@@ -88,8 +143,13 @@ jobs:
           dotnet run --project "$GITHUB_WORKSPACE/src/DotnetLift.Cli" -c Release --no-build -- upgrade . --yes --accept-risky
           git log --oneline
           cat LegacyShop.Core/Services/PasswordHasher.cs
+          cat LegacyShop.Core/LegacyShop.Core.csproj
+          # The compatibility path keeps the BinaryFormatter code (and the stored format) as it is.
+          grep -q "new BinaryFormatter()" LegacyShop.Core/Services/SnapshotSerializer.cs
+          grep -q "System.Runtime.Serialization.Formatters" LegacyShop.Core/LegacyShop.Core.csproj
           dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net48
           dotnet build LegacyShop.Core/LegacyShop.Core.csproj -f net10.0
+          dotnet build LegacyShop.Data/LegacyShop.Data.csproj -f net10.0
 
       - name: Upload sample report
         if: matrix.os == 'ubuntu-latest'
