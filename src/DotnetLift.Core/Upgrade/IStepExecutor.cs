@@ -42,6 +42,7 @@ public static class StepExecutors
         new CurrentUserProvider(),
         new ExplicitCodePage(),
         new BinaryFormatterToJson(),
+        new BinaryFormatterCompatibility(),
         new WebConfigToAppSettings(),
         new StaticFilesToWwwroot(),
     ];
